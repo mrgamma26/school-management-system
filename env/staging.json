@@ -1,0 +1,4 @@
+{
+  "SUPABASE_URL": "https://your-staging-project.supabase.co",
+  "SUPABASE_PUBLISHABLE_KEY": "your-staging-publishable-key"
+}
