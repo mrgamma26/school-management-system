@@ -47,6 +47,11 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Environment files — never commit secrets
+env/dev.json
+env/staging.json
+env/production.json
+
 # Mobile Credentials
 android/app/key.properties
 *.keystore

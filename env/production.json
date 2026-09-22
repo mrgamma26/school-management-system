@@ -1,4 +1,4 @@
 {
-  "SUPABASE_URL": "https://your-production-project.supabase.co",
-  "SUPABASE_PUBLISHABLE_KEY": "your-production-publishable-key"
+  "SUPABASE_URL": "https://YOUR-PRODUCTION-PROJECT.supabase.co",
+  "SUPABASE_PUBLISHABLE_KEY": "YOUR-PRODUCTION-PUBLISHABLE-KEY"
 }

@@ -1,25 +1,24 @@
+import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'core/database/supabase_client.dart';
+import 'app/app.dart';
 
-import 'features/authentication/presentation/pages/login_page.dart';
-
+/// Application entry point.
+/// Run with: flutter run --dart-define-from-file=env/dev.json
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Supabase.initialize(
-    url: 'https://vgrztgztjqsqenxetsxb.supabase.co',
-    publishableKey: 'sb_publishable_90p4FsW-SrptN1y_1bAJzA_sh9n4BwP',
-  );
-
-  runApp(const ProviderScope(child: MyApp()));
-}
-
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(debugShowCheckedModeBanner: false, home: LoginPage());
+  try {
+    await initSupabase();
+  } catch (e) {
+    developer.log(
+      'WARNING: Supabase initialization failed. App continuing in offline mode.',
+      name: 'main',
+      error: e,
+    );
+    // App continues despite Supabase init failure - graceful degradation
   }
+
+  runApp(const ProviderScope(child: SchoolApp()));
 }

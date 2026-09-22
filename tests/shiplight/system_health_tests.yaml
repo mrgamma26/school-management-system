@@ -1,0 +1,43 @@
+# System Health Tests - School Management System
+# Test ID: SYS-001
+
+tests:
+  - id: SYS-001
+    name: "Application Loading and Navigation"
+    description: "Verify the application loads properly and basic navigation works"
+    steps:
+      - action: "navigate"
+        url: "{{APP_URL}}"
+      - action: "wait_for_element"
+        selector: "body"
+        timeout: 15000
+      - action: "screenshot"
+        name: "app_initial_load"
+      - action: "check_console_errors"
+      - action: "verify_no_404_errors"
+    expected: "Application should load without errors"
+    status: "PENDING"
+
+  - id: SYS-002
+    name: "Responsive Design Check"
+    description: "Verify the application works on different screen sizes"
+    steps:
+      - action: "navigate"
+        url: "{{APP_URL}}"
+      - action: "set_viewport"
+        width: 1920
+        height: 1080
+      - action: "screenshot"
+        name: "desktop_view"
+      - action: "set_viewport"
+        width: 768
+        height: 1024
+      - action: "screenshot"
+        name: "tablet_view"
+      - action: "set_viewport"
+        width: 375
+        height: 667
+      - action: "screenshot"
+        name: "mobile_view"
+    expected: "Application should be responsive"
+    status: "PENDING"

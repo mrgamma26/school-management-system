@@ -37,9 +37,14 @@ dependencies:
   supabase_flutter: ^2.17.2
   flutter_riverpod: ^3.4.3
   go_router: ^18.0.1
-  flutter_lints: ^6.0.0
   # NOTE: 'provider' package removed — it conflicts with flutter_riverpod's
   # Provider class. This project uses Riverpod exclusively for state management.
+  
+  # PDF/CSV Export packages
+  pdf: ^3.10.7
+  printing: ^5.12.0
+  csv: ^5.1.1
+  path_provider: ^2.1.1
 
 dev_dependencies:
   flutter_test:
@@ -50,6 +55,7 @@ dev_dependencies:
   # activated in the `analysis_options.yaml` file located at the root of your
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
+  flutter_lints: ^6.0.0
 flutter:
 
   # The following line ensures that the Material Icons font is

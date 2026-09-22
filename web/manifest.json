@@ -1,11 +1,11 @@
 {
-    "name": "school_management_app",
-    "short_name": "school_management_app",
+    "name": "Mai Halima School Management",
+    "short_name": "School Management",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#FFFFFF",
+    "theme_color": "#1565C0",
+    "description": "Complete school management system for Mai Halima School",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
