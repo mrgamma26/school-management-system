@@ -1,4 +1,40 @@
 import '../../../core/database/supabase_client.dart';
+import '../../../core/errors/app_exception.dart';
+
+/// Maps Supabase/database errors to [AppException] subtypes.
+AppException _mapException(Object error) {
+  final text = error.toString();
+
+  // Permission/auth errors → ForbiddenException
+  if (text.contains('permission') ||
+      text.contains('42501') ||
+      text.contains('denied')) {
+    return ForbiddenException(
+      'You do not have permission to perform this action.',
+    );
+  }
+
+  // Not found errors → NotFoundException
+  if (text.contains('0 rows') ||
+      text.contains('PGRST116') ||
+      text.contains('single()') ||
+      text.contains('no rows')) {
+    return NotFoundException('Resource not found.');
+  }
+
+  // Network errors → NetworkException
+  if (text.contains('network') ||
+      text.contains('SocketException') ||
+      text.contains('Connection refused') ||
+      text.contains('Connection reset')) {
+    return NetworkException(
+      'Network error. Check your connection and try again.',
+    );
+  }
+
+  // Server/database errors → ServerException
+  return ServerException('Something went wrong. Please try again.');
+}
 
 /// Assessment model loaded from the [assessment] table.
 class Assessment {
@@ -41,6 +77,7 @@ class AssessmentRepository {
   }
 
   /// Creates a new assessment.
+  /// Throws [AppException] if maxScore is invalid or on any database/network error.
   Future<Assessment> createAssessment({
     required String classSubjectId,
     required String name,
@@ -50,20 +87,26 @@ class AssessmentRepository {
     if (maxScore <= 0) {
       throw ArgumentError('Max score must be greater than zero.');
     }
-    final row = await supabase
-        .from('assessment')
-        .insert({
-          'classsubjectid': classSubjectId,
-          'assessmentname': name,
-          'assessmenttype': type,
-          'maxscore': maxScore,
-        })
-        .select()
-        .single();
-    return Assessment.fromJson(row);
+    try {
+      final row = await supabase
+          .from('assessment')
+          .insert({
+            'classsubjectid': classSubjectId,
+            'assessmentname': name,
+            'assessmenttype': type,
+            'maxscore': maxScore,
+          })
+          .select()
+          .single();
+      return Assessment.fromJson(row);
+    } catch (e) {
+      if (e is ArgumentError || e is AppException) rethrow;
+      throw _mapException(e);
+    }
   }
 
   /// Updates an existing assessment.
+  /// Throws [AppException] on any database or network error.
   Future<void> updateAssessment(
     String assessmentId, {
     String? name,
@@ -73,18 +116,32 @@ class AssessmentRepository {
     if (maxScore != null && maxScore <= 0) {
       throw ArgumentError('Max score must be greater than zero.');
     }
-    final data = <String, dynamic>{};
-    if (name != null) data['assessmentname'] = name;
-    if (type != null) data['assessmenttype'] = type;
-    if (maxScore != null) data['maxscore'] = maxScore;
-    await supabase
-        .from('assessment')
-        .update(data)
-        .eq('assessmentid', assessmentId);
+    try {
+      final data = <String, dynamic>{};
+      if (name != null) data['assessmentname'] = name;
+      if (type != null) data['assessmenttype'] = type;
+      if (maxScore != null) data['maxscore'] = maxScore;
+      await supabase
+          .from('assessment')
+          .update(data)
+          .eq('assessmentid', assessmentId);
+    } catch (e) {
+      if (e is ArgumentError || e is AppException) rethrow;
+      throw _mapException(e);
+    }
   }
 
   /// Deletes an assessment (and cascades grades).
+  /// Throws [AppException] on any database or network error.
   Future<void> deleteAssessment(String assessmentId) async {
-    await supabase.from('assessment').delete().eq('assessmentid', assessmentId);
+    try {
+      await supabase
+          .from('assessment')
+          .delete()
+          .eq('assessmentid', assessmentId);
+    } catch (e) {
+      if (e is AppException) rethrow;
+      throw _mapException(e);
+    }
   }
 }

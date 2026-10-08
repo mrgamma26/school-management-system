@@ -1,22 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/widgets/app_widgets.dart';
 import '../../data/communications_repository.dart';
 import '../../../../core/services/audit_service.dart';
 import '../../../authentication/presentation/providers/auth_provider.dart';
 import '../../../../core/database/supabase_client.dart';
+import '../../../../core/auth/permission_helper.dart';
 
 // ── Providers ─────────────────────────────────────────────────────────────────
 
 final _notificationsProvider = FutureProvider<List<Map<String, dynamic>>>((
   ref,
 ) async {
-  final role = ref.watch(authProvider).user?.roleName.toUpperCase() ?? '';
+  final permHelper = await ref.watch(permissionHelperProvider.future);
+  final isGuardian = permHelper?.has('notifications:view_own') ?? false;
   final uid = ref.watch(authProvider).user?.userId ?? '';
-  final repo = CommunicationsRepository();
 
   List<dynamic> rows;
-  if (role == 'GUARDIAN') {
+  if (isGuardian) {
     final g = await supabase
         .from('guardian')
         .select('guardianid')
@@ -63,15 +63,15 @@ class NotificationsPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final role = ref.watch(authProvider).user?.roleName.toUpperCase() ?? '';
-    final canCompose = role != 'GUARDIAN';
+    final permHelperAsync = ref.watch(permissionHelperProvider);
+    final canCompose = permHelperAsync.maybeWhen(
+      data: (perm) => perm?.isAtLeast(UserRole.staff) ?? false,
+      orElse: () => false,
+    );
     final async = ref.watch(_notificationsProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Notifications'),
-        actions: [HomeButton(roleName: role)],
-      ),
+      appBar: AppBar(title: const Text('Notifications')),
       floatingActionButton: canCompose
           ? FloatingActionButton.extended(
               icon: const Icon(Icons.send),
@@ -100,6 +100,10 @@ class NotificationsPage extends ConsumerWidget {
               final isUnread = n['readstatus'] == 'UNREAD';
               final guardian = n['guardian'] as Map<String, dynamic>?;
               final sender = n['staff'] as Map<String, dynamic>?;
+              final isGuardian = permHelperAsync.maybeWhen(
+                data: (perm) => perm?.has('notifications:view_own') ?? false,
+                orElse: () => false,
+              );
 
               return Card(
                 color: isUnread
@@ -150,7 +154,7 @@ class NotificationsPage extends ConsumerWidget {
                     ],
                   ),
                   isThreeLine: true,
-                  trailing: role == 'GUARDIAN' && isUnread
+                  trailing: isGuardian && isUnread
                       ? TextButton(
                           child: const Text('Mark Read'),
                           onPressed: () async {

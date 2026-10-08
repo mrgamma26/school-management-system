@@ -1,21 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/database/supabase_client.dart';
 import '../../../../core/services/audit_service.dart';
 import '../../../authentication/presentation/providers/auth_provider.dart';
+import '../../../users/data/repositories/user_repository.dart';
+import '../../../../widgets/skeleton_loader.dart';
 
 // ── Providers ────────────────────────────────────────────────────────────────
 
 /// Loads the role record (name + existing permissions) for [roleId].
 final _rolePermissionsProvider =
     FutureProvider.family<Map<String, dynamic>, String>((ref, roleId) async {
-  final role = await supabase
-      .from('role')
-      .select('roleid, rolename, description, rolepermission(permissionid, permissionname)')
-      .eq('roleid', roleId)
-      .single();
-  return role;
-});
+      return UserRepository().getRoleWithPermissions(roleId);
+    });
 
 // ── Canonical permission catalogue ───────────────────────────────────────────
 
@@ -29,11 +25,7 @@ const _permissionCatalogue = <String, List<String>>{
     'students:enrol',
     'students:withdraw',
   ],
-  'Staff': [
-    'staff:read',
-    'staff:write',
-    'staff:delete',
-  ],
+  'Staff': ['staff:read', 'staff:write', 'staff:delete'],
   'Guardians': [
     'guardians:read',
     'guardians:write',
@@ -73,16 +65,14 @@ const _permissionCatalogue = <String, List<String>>{
     'users:reset_password',
     'permissions:manage',
   ],
-  'Audit Log': [
-    'auditlog:read',
-  ],
+  'Audit Log': ['auditlog:read'],
 };
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 /// Full permission management screen for a single role.
 /// Reached from [UserDetailsPage] → "Manage Permissions" button.
-/// Only accessible by SUPER_USER / SYSTEM_ADMIN.
+/// Only accessible by SUPER_USER.
 class ManagePermissionsPage extends ConsumerStatefulWidget {
   final String roleId;
   final String roleName;
@@ -98,8 +88,7 @@ class ManagePermissionsPage extends ConsumerStatefulWidget {
       _ManagePermissionsPageState();
 }
 
-class _ManagePermissionsPageState
-    extends ConsumerState<ManagePermissionsPage> {
+class _ManagePermissionsPageState extends ConsumerState<ManagePermissionsPage> {
   /// Local set of currently granted permission names — edited by toggles.
   Set<String> _granted = {};
 
@@ -140,9 +129,9 @@ class _ManagePermissionsPageState
     final toRemove = _original.difference(_granted);
 
     if (toAdd.isEmpty && toRemove.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No changes to save.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('No changes to save.')));
       return;
     }
 
@@ -152,26 +141,18 @@ class _ManagePermissionsPageState
     });
 
     try {
+      final repo = UserRepository();
+
       // Insert new permissions
       if (toAdd.isNotEmpty) {
-        await supabase.from('rolepermission').insert(
-          toAdd
-              .map((name) => {
-                    'roleid': widget.roleId,
-                    'permissionname': name,
-                  })
-              .toList(),
-        );
+        await repo.addPermissionsToRole(widget.roleId, toAdd.toList());
       }
 
       // Delete removed permissions by their permissionid
       for (final name in toRemove) {
         final id = _permissionIds[name];
         if (id != null) {
-          await supabase
-              .from('rolepermission')
-              .delete()
-              .eq('permissionid', id);
+          await repo.removePermissionFromRole(id);
         }
       }
 
@@ -191,6 +172,9 @@ class _ManagePermissionsPageState
       // Commit local state
       _original = Set.of(_granted);
       ref.invalidate(_rolePermissionsProvider(widget.roleId));
+      if (actor.roleId == widget.roleId) {
+        ref.invalidate(permissionsProvider);
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -212,7 +196,8 @@ class _ManagePermissionsPageState
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
-  bool get _isDirty => _granted != _original &&
+  bool get _isDirty =>
+      _granted != _original &&
       (!_granted.containsAll(_original) || !_original.containsAll(_granted));
 
   void _toggleAll(List<String> perms, bool grant) {
@@ -239,7 +224,10 @@ class _ManagePermissionsPageState
             const Text('Manage Permissions'),
             Text(
               widget.roleName,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.normal),
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.normal,
+              ),
             ),
           ],
         ),
@@ -262,7 +250,7 @@ class _ManagePermissionsPageState
         ],
       ),
       body: async.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const SkeletonListLoader(itemCount: 5, itemHeight: 72),
         error: (e, _) => Center(child: Text('Error loading permissions: $e')),
         data: (data) {
           _initFromData(data);
@@ -282,10 +270,7 @@ class _ManagePermissionsPageState
                       }),
                       child: const Text('Discard'),
                     ),
-                    TextButton(
-                      onPressed: _save,
-                      child: const Text('Save Now'),
-                    ),
+                    TextButton(onPressed: _save, child: const Text('Save Now')),
                   ],
                 ),
 
@@ -302,30 +287,32 @@ class _ManagePermissionsPageState
               Expanded(
                 child: ListView(
                   padding: const EdgeInsets.symmetric(
-                      vertical: 8, horizontal: 4),
+                    vertical: 8,
+                    horizontal: 4,
+                  ),
                   children: _permissionCatalogue.entries.map((entry) {
                     final domain = entry.key;
                     final perms = entry.value;
-                    final allGranted =
-                        perms.every((p) => _granted.contains(p));
-                    final someGranted =
-                        perms.any((p) => _granted.contains(p));
+                    final allGranted = perms.every((p) => _granted.contains(p));
+                    final someGranted = perms.any((p) => _granted.contains(p));
 
                     return Card(
                       margin: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 4),
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
                       child: ExpansionTile(
                         leading: Icon(
                           allGranted
                               ? Icons.check_circle
                               : someGranted
-                                  ? Icons.indeterminate_check_box
-                                  : Icons.radio_button_unchecked,
+                              ? Icons.indeterminate_check_box
+                              : Icons.radio_button_unchecked,
                           color: allGranted
                               ? Colors.green
                               : someGranted
-                                  ? Colors.orange
-                                  : Colors.grey,
+                              ? Colors.orange
+                              : Colors.grey,
                         ),
                         title: Text(
                           domain,
@@ -357,12 +344,13 @@ class _ManagePermissionsPageState
                             title: Text(
                               perm,
                               style: const TextStyle(
-                                  fontFamily: 'monospace', fontSize: 13),
+                                fontFamily: 'monospace',
+                                fontSize: 13,
+                              ),
                             ),
                             secondary: Icon(
                               isGranted ? Icons.lock_open : Icons.lock,
-                              color:
-                                  isGranted ? Colors.green : Colors.grey,
+                              color: isGranted ? Colors.green : Colors.grey,
                               size: 18,
                             ),
                             onChanged: (checked) {

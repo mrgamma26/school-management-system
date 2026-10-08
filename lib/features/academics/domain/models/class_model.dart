@@ -13,6 +13,12 @@ class ClassModel {
 
   const ClassModel({required this.classId, required this.className, this.form});
 
+  /// Alias for classId (used in some UI code)
+  String get id => classId;
+
+  /// Alias for className (used in some UI code)
+  String get classroomName => className;
+
   factory ClassModel.fromJson(Map<String, dynamic> j) => ClassModel(
     classId: j['classid'] as String,
     // DB uses `classroomname`, not `classname`

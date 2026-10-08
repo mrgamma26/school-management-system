@@ -15,7 +15,10 @@ Future<void> initSupabase() async {
     );
   }
 
-  await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
+  await Supabase.initialize(
+    url: supabaseUrl,
+    publishableKey: supabaseAnonKey,
+  ).timeout(const Duration(seconds: 10));
 }
 
 /// Global Supabase client accessor.

@@ -1,50 +1,27 @@
+import '../../../../core/auth/school_role_access.dart';
+import '../../../academics/domain/models/academic_year.dart';
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/database/supabase_client.dart';
-import '../../data/calendar_repository.dart';
+import '../../../../core/utils/form_state_persistence.dart';
+import '../calendar_providers.dart';
 import '../../domain/models/calendar_event.dart';
 import '../../../authentication/presentation/providers/auth_provider.dart';
-import '../../../../core/widgets/app_widgets.dart';
 
 // ── Supporting providers ──────────────────────────────────────────────────────
-
-final _classesProvider = FutureProvider<List<Map<String, dynamic>>>((
-  ref,
-) async {
-  final rows = await supabase
-      .from('class')
-      .select('classid, classname')
-      .order('classname', ascending: true);
-  return List<Map<String, dynamic>>.from(rows as List);
-});
-
-final _yearsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
-  final rows = await supabase
-      .from('academicyear')
-      .select('academicyearid, academicyear, term')
-      .order('academicyear', ascending: false);
-  return List<Map<String, dynamic>>.from(rows as List);
-});
-
-// Fetch the staffid for the currently logged-in user (needed for createdby).
-final _myStaffIdProvider = FutureProvider<String>((ref) async {
-  final uid = ref.watch(authProvider).user!.userId;
-  final row = await supabase
-      .from('staff')
-      .select('staffid')
-      .eq('userid', uid)
-      .single();
-  return row['staffid'] as String;
-});
-
-// ── Page ──────────────────────────────────────────────────────────────────────
 
 /// Create or edit a calendar event.
 /// Pass [existingEvent] to enter edit mode.
 class CalendarEventFormPage extends ConsumerStatefulWidget {
   final CalendarEvent? existingEvent;
+  final DateTime? initialDate;
 
-  const CalendarEventFormPage({this.existingEvent, super.key});
+  const CalendarEventFormPage({
+    this.existingEvent,
+    this.initialDate,
+    super.key,
+  });
 
   @override
   ConsumerState<CalendarEventFormPage> createState() =>
@@ -57,22 +34,27 @@ class _CalendarEventFormPageState extends ConsumerState<CalendarEventFormPage> {
   // ── Controllers ───────────────────────────────────────────────────────────
   late final TextEditingController _nameCtrl;
   late final TextEditingController _descCtrl;
+  late final AutoSaveDebouncer _autoSaveDebouncer;
 
   // ── Form state ────────────────────────────────────────────────────────────
   CalendarEventType _type = CalendarEventType.schoolEvent;
   DateTime _startDate = DateTime.now();
-  TimeOfDay _startTime = TimeOfDay.now();
+  TimeOfDay _startTime = const TimeOfDay(hour: 9, minute: 0);
   DateTime _endDate = DateTime.now();
-  TimeOfDay _endTime = TimeOfDay(
-    hour: TimeOfDay.now().hour + 1,
-    minute: TimeOfDay.now().minute,
-  );
+  TimeOfDay _endTime = const TimeOfDay(hour: 10, minute: 0);
+  final Set<DateTime> _additionalDates = {};
   bool _allDay = false;
   String? _classId;
   String? _academicYearId;
   bool _saving = false;
+  bool _autoSaving = false;
+  DateTime? _lastSavedTime;
+  bool _applyToAllClasses = false;
 
   bool get _isEdit => widget.existingEvent != null;
+  String get _formId => _isEdit
+      ? 'calendar_event_edit_${widget.existingEvent!.eventId}'
+      : 'calendar_event_create';
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -82,6 +64,12 @@ class _CalendarEventFormPageState extends ConsumerState<CalendarEventFormPage> {
     final e = widget.existingEvent;
     _nameCtrl = TextEditingController(text: e?.eventName ?? '');
     _descCtrl = TextEditingController(text: e?.description ?? '');
+
+    // Initialize auto-save debouncer
+    _autoSaveDebouncer = AutoSaveDebouncer(
+      onSave: _autoSaveFormState,
+      duration: const Duration(seconds: 3),
+    );
 
     if (e != null) {
       _type = e.eventType;
@@ -96,13 +84,139 @@ class _CalendarEventFormPageState extends ConsumerState<CalendarEventFormPage> {
       _endTime = TimeOfDay.fromDateTime(e.endTime);
       _classId = e.classId;
       _academicYearId = e.academicYearId;
+    } else if (widget.initialDate != null) {
+      _startDate = DateUtils.dateOnly(widget.initialDate!);
+      _endDate = _startDate;
+    } else {
+      // Load saved form state if not in edit mode
+      _loadFormState();
     }
+  }
+
+  /// Load saved form state from SharedPreferences
+  Future<void> _loadFormState() async {
+    try {
+      final savedData = await FormStatePersistence.loadFormState(_formId);
+      if (savedData != null && mounted) {
+        setState(() {
+          _nameCtrl.text = savedData['eventName'] ?? '';
+          _descCtrl.text = savedData['description'] ?? '';
+          _type =
+              _parseEventType(savedData['eventType']) ??
+              CalendarEventType.schoolEvent;
+          _allDay = savedData['allDay'] ?? false;
+          if (savedData['startDate'] != null) {
+            _startDate = DateTime.parse(savedData['startDate']);
+          }
+          if (savedData['startTime'] != null) {
+            final timeParts = (savedData['startTime'] as String).split(':');
+            _startTime = TimeOfDay(
+              hour: int.parse(timeParts[0]),
+              minute: int.parse(timeParts[1]),
+            );
+          }
+          if (savedData['endDate'] != null) {
+            _endDate = DateTime.parse(savedData['endDate']);
+          }
+          if (savedData['endTime'] != null) {
+            final timeParts = (savedData['endTime'] as String).split(':');
+            _endTime = TimeOfDay(
+              hour: int.parse(timeParts[0]),
+              minute: int.parse(timeParts[1]),
+            );
+          }
+          _additionalDates.addAll(
+            (savedData['additionalDates'] as List? ?? []).map(
+              (d) => DateUtils.dateOnly(DateTime.parse(d as String)),
+            ),
+          );
+          _classId = savedData['classId'];
+          _academicYearId = savedData['academicYearId'];
+          _applyToAllClasses = savedData['applyToAllClasses'] ?? false;
+        });
+        developer.log(
+          'Form state restored from cache',
+          name: 'CalendarEventForm',
+        );
+      }
+    } catch (e) {
+      developer.log(
+        'Error loading form state',
+        name: 'CalendarEventForm',
+        error: e,
+      );
+    }
+  }
+
+  /// Parse event type from string
+  CalendarEventType? _parseEventType(String? value) {
+    if (value == null) return null;
+    for (final type in CalendarEventType.values) {
+      if (type.toString() == value || type.label == value) {
+        return type;
+      }
+    }
+    return null;
+  }
+
+  /// Get current form data as map
+  Map<String, dynamic> _getFormData() {
+    return {
+      'additionalDates': _additionalDates
+          .map((d) => d.toIso8601String())
+          .toList(),
+      'eventName': _nameCtrl.text,
+      'description': _descCtrl.text,
+      'eventType': _type.toString(),
+      'allDay': _allDay,
+      'startDate': _startDate.toIso8601String(),
+      'startTime': '${_startTime.hour}:${_startTime.minute}',
+      'endDate': _endDate.toIso8601String(),
+      'endTime': '${_endTime.hour}:${_endTime.minute}',
+      'classId': _classId,
+      'academicYearId': _academicYearId,
+      'applyToAllClasses': _applyToAllClasses,
+    };
+  }
+
+  /// Auto-save form state to SharedPreferences
+  Future<void> _autoSaveFormState() async {
+    if (_isEdit) return; // Only auto-save for new forms
+
+    setState(() => _autoSaving = true);
+    try {
+      await FormStatePersistence.saveFormStateWithTimestamp(
+        _formId,
+        _getFormData(),
+      );
+      final lastSaved = await FormStatePersistence.getLastSavedTime(_formId);
+      if (mounted) {
+        setState(() {
+          _autoSaving = false;
+          _lastSavedTime = lastSaved;
+        });
+      }
+      developer.log('Form auto-saved', name: 'CalendarEventForm');
+    } catch (e) {
+      developer.log(
+        'Error auto-saving form',
+        name: 'CalendarEventForm',
+        error: e,
+      );
+      if (mounted) setState(() => _autoSaving = false);
+    }
+  }
+
+  /// Trigger auto-save on field changes
+  void _onFieldChanged() {
+    _autoSaveDebouncer.save();
   }
 
   @override
   void dispose() {
     _nameCtrl.dispose();
     _descCtrl.dispose();
+    _autoSaveDebouncer.dispose();
     super.dispose();
   }
 
@@ -121,7 +235,10 @@ class _CalendarEventFormPageState extends ConsumerState<CalendarEventFormPage> {
       firstDate: DateTime(2020),
       lastDate: DateTime(2040),
     );
-    if (picked != null) onPicked(picked);
+    if (picked != null) {
+      onPicked(picked);
+      _onFieldChanged(); // Trigger auto-save
+    }
   }
 
   Future<void> _pickTime({
@@ -129,7 +246,10 @@ class _CalendarEventFormPageState extends ConsumerState<CalendarEventFormPage> {
     required ValueChanged<TimeOfDay> onPicked,
   }) async {
     final picked = await showTimePicker(context: context, initialTime: initial);
-    if (picked != null) onPicked(picked);
+    if (picked != null) {
+      onPicked(picked);
+      _onFieldChanged(); // Trigger auto-save
+    }
   }
 
   String _fmtDate(DateTime d) =>
@@ -143,7 +263,7 @@ class _CalendarEventFormPageState extends ConsumerState<CalendarEventFormPage> {
 
   // ── Save ──────────────────────────────────────────────────────────────────
 
-  Future<void> _save(String staffId) async {
+  Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
 
     final start = _allDay
@@ -163,52 +283,116 @@ class _CalendarEventFormPageState extends ConsumerState<CalendarEventFormPage> {
       return;
     }
 
+    _autoSaveDebouncer.cancel();
     setState(() => _saving = true);
 
     try {
       final actor = ref.read(authProvider).user!;
-      final repo = CalendarRepository();
+      final repo = ref.read(calendarRepositoryProvider);
 
+      if (!canManageSchoolCalendar(actor.roleName)) {
+        throw const FormatException('Only administrators can manage events.');
+      }
       final draft = CalendarEvent(
         eventId: widget.existingEvent?.eventId ?? '',
         classId: _classId,
-        createdBy: staffId,
+        createdBy: widget.existingEvent?.createdBy ?? '',
+        createdByUser: widget.existingEvent?.createdByUser ?? actor.userId,
         createdByName: actor.username,
         eventName: _nameCtrl.text.trim(),
         eventType: _type,
-        description: _descCtrl.text.trim().isEmpty
-            ? null
-            : _descCtrl.text.trim(),
+        description: _descCtrl.text.trim(),
         startTime: start,
         endTime: end,
         allDay: _allDay,
         academicYearId: _academicYearId,
         createdAt: DateTime.now(),
       );
-
       if (_isEdit) {
         await repo.update(
-          eventId: widget.existingEvent!.eventId,
+          eventId: draft.eventId,
           event: draft,
           actorUserId: actor.userId,
           actorRole: actor.roleName,
           previousEvent: widget.existingEvent!,
         );
       } else {
-        await repo.create(
-          event: draft,
+        final classIds = <String?>[_classId];
+        if (_applyToAllClasses && _type == CalendarEventType.timetable) {
+          final classes = await ref.read(calendarClassesProvider.future);
+          if (classes.isEmpty) {
+            throw const FormatException('No classes available.');
+          }
+          classIds
+            ..clear()
+            ..addAll(classes.map((c) => c['classid'] as String));
+        }
+        final dates = {DateUtils.dateOnly(_startDate), ..._additionalDates};
+        final dayOffset = DateTime.utc(
+          end.year,
+          end.month,
+          end.day,
+        ).difference(DateTime.utc(start.year, start.month, start.day)).inDays;
+        final events = <CalendarEvent>[];
+        for (final date in dates) {
+          for (final classId in classIds) {
+            events.add(
+              draft.copyWith(
+                classId: classId,
+                startTime: DateTime(
+                  date.year,
+                  date.month,
+                  date.day,
+                  start.hour,
+                  start.minute,
+                  start.second,
+                ),
+                endTime: DateTime(
+                  date.year,
+                  date.month,
+                  date.day + dayOffset,
+                  end.hour,
+                  end.minute,
+                  end.second,
+                ),
+              ),
+            );
+          }
+        }
+        await repo.createMany(
+          events: events,
           actorUserId: actor.userId,
           actorRole: actor.roleName,
         );
       }
 
-      if (mounted) Navigator.pop(context, true);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _isEdit
+                  ? 'Event updated successfully'
+                  : 'Event created successfully',
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+
+        // Clear saved form state on successful submit
+        if (!_isEdit) {
+          await FormStatePersistence.clearFormState(_formId);
+        }
+
+        if (mounted) Navigator.pop(context, true);
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error saving event: $e'),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
           ),
         );
       }
@@ -221,244 +405,357 @@ class _CalendarEventFormPageState extends ConsumerState<CalendarEventFormPage> {
 
   @override
   Widget build(BuildContext context) {
-    final staffAsync = ref.watch(_myStaffIdProvider);
-    final classAsync = ref.watch(_classesProvider);
-    final yearsAsync = ref.watch(_yearsProvider);
+    final user = ref.watch(authProvider).user;
+    final classAsync = ref.watch(calendarClassesProvider);
+    final yearsAsync = ref.watch(calendarYearsProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(_isEdit ? 'Edit Event' : 'New Calendar Event'),
-        actions: [
-          HomeButton(roleName: ref.watch(authProvider).user?.roleName ?? ''),
-          if (_saving)
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            ),
-        ],
-      ),
-      body: staffAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
+    // Only ADMIN can create calendar events
+    final canCreateEvent = canManageSchoolCalendar(user?.roleName ?? '');
+
+    if (!canCreateEvent) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Calendar Events')),
+        body: const Center(
           child: Text(
-            'Could not load your staff profile: $e\n'
-            'Only staff accounts can create calendar events.',
+            'Only administrators can create calendar events.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 16),
           ),
         ),
-        data: (staffId) => Form(
-          key: _formKey,
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              // ── Event name ─────────────────────────────────
-              TextFormField(
-                controller: _nameCtrl,
-                textCapitalization: TextCapitalization.words,
-                decoration: const InputDecoration(
-                  labelText: 'Event Name *',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.event),
+      );
+    }
+
+    return PopScope(
+      canPop: !_saving,
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            tooltip: 'Close',
+            icon: const Icon(Icons.close),
+            onPressed: _saving ? null : () => Navigator.pop(context),
+          ),
+          title: Text(_isEdit ? 'Edit Event' : 'New Calendar Event'),
+          actions: [
+            if (!_isEdit)
+              AutoSaveIndicator(
+                isSaving: _autoSaving,
+                lastSavedTime: _lastSavedTime,
+              ),
+            if (_saving)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
                 ),
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'Name is required' : null,
               ),
-              const SizedBox(height: 16),
-
-              // ── Event type ─────────────────────────────────
-              _SectionLabel('Event Type'),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: CalendarEventType.values.map((t) {
-                  final selected = _type == t;
-                  final color = _typeColor(t);
-                  return ChoiceChip(
-                    label: Text(t.label),
-                    selected: selected,
-                    selectedColor: color.withValues(alpha: 0.2),
-                    labelStyle: TextStyle(
-                      color: selected ? color : null,
-                      fontWeight: selected ? FontWeight.bold : null,
-                    ),
-                    avatar: Container(
-                      width: 10,
-                      height: 10,
-                      decoration: BoxDecoration(
-                        color: color,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    onSelected: (_) => setState(() => _type = t),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 20),
-
-              // ── All-day toggle ─────────────────────────────
-              SwitchListTile(
-                title: const Text('All day'),
-                subtitle: const Text(
-                  'Spans the full day — no specific start/end time',
-                ),
-                value: _allDay,
-                onChanged: (v) => setState(() => _allDay = v),
-                contentPadding: EdgeInsets.zero,
-              ),
-              const SizedBox(height: 16),
-
-              // ── Start ──────────────────────────────────────
-              _SectionLabel('Start'),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: _DateButton(
-                      label: _fmtDate(_startDate),
-                      icon: Icons.calendar_today,
-                      onTap: () => _pickDate(
-                        initial: _startDate,
-                        onPicked: (d) => setState(() => _startDate = d),
-                      ),
-                    ),
+          ],
+        ),
+        body: AbsorbPointer(
+          absorbing: _saving,
+          child: Form(
+            key: _formKey,
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                // ── Event name ─────────────────────────────────
+                TextFormField(
+                  controller: _nameCtrl,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: const InputDecoration(
+                    labelText: 'Event Name *',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.event),
                   ),
-                  if (!_allDay) ...[
-                    const SizedBox(width: 8),
+                  onChanged: (_) => _onFieldChanged(),
+                  validator: (v) => (v == null || v.trim().isEmpty)
+                      ? 'Name is required'
+                      : null,
+                ),
+                const SizedBox(height: 16),
+
+                // ── Event type ─────────────────────────────────
+                _SectionLabel('Event Type'),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: CalendarEventType.values.map((t) {
+                    final selected = _type == t;
+                    final color = _typeColor(t);
+                    return ChoiceChip(
+                      label: Text(t.label),
+                      selected: selected,
+                      selectedColor: color.withValues(alpha: 0.2),
+                      labelStyle: TextStyle(
+                        color: selected ? color : null,
+                        fontWeight: selected ? FontWeight.bold : null,
+                      ),
+                      avatar: Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          color: color,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      onSelected: (_) {
+                        setState(() => _type = t);
+                        _onFieldChanged();
+                      },
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 20),
+
+                // ── All-day toggle ─────────────────────────────
+                SwitchListTile(
+                  title: const Text('All day'),
+                  subtitle: const Text(
+                    'Spans the full day — no specific start/end time',
+                  ),
+                  value: _allDay,
+                  onChanged: (v) => setState(() => _allDay = v),
+                  contentPadding: EdgeInsets.zero,
+                ),
+                const SizedBox(height: 8),
+
+                // ── Date range info ────────────────────────────
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        color: Colors.blue.shade700,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Select a date range (e.g., Monday to Friday) to create recurring events',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.blue.shade900,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // ── Start ──────────────────────────────────────
+                _SectionLabel('Start'),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
                     Expanded(
                       child: _DateButton(
-                        label: _fmtTime(_startTime),
-                        icon: Icons.access_time,
-                        onTap: () => _pickTime(
-                          initial: _startTime,
-                          onPicked: (t) => setState(() => _startTime = t),
+                        label: _fmtDate(_startDate),
+                        icon: Icons.calendar_today,
+                        onTap: () => _pickDate(
+                          initial: _startDate,
+                          onPicked: (d) => setState(() => _startDate = d),
                         ),
                       ),
                     ),
-                  ],
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              // ── End ────────────────────────────────────────
-              _SectionLabel('End'),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: _DateButton(
-                      label: _fmtDate(_endDate),
-                      icon: Icons.calendar_today,
-                      onTap: () => _pickDate(
-                        initial: _endDate,
-                        onPicked: (d) => setState(() => _endDate = d),
+                    if (!_allDay) ...[
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _DateButton(
+                          label: _fmtTime(_startTime),
+                          icon: Icons.access_time,
+                          onTap: () => _pickTime(
+                            initial: _startTime,
+                            onPicked: (t) => setState(() => _startTime = t),
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                  if (!_allDay) ...[
-                    const SizedBox(width: 8),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                // ── End ────────────────────────────────────────
+                _SectionLabel('End'),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
                     Expanded(
                       child: _DateButton(
-                        label: _fmtTime(_endTime),
-                        icon: Icons.access_time,
-                        onTap: () => _pickTime(
-                          initial: _endTime,
-                          onPicked: (t) => setState(() => _endTime = t),
+                        label: _fmtDate(_endDate),
+                        icon: Icons.calendar_today,
+                        onTap: () => _pickDate(
+                          initial: _endDate,
+                          onPicked: (d) => setState(() => _endDate = d),
                         ),
                       ),
                     ),
+                    if (!_allDay) ...[
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _DateButton(
+                          label: _fmtTime(_endTime),
+                          icon: Icons.access_time,
+                          onTap: () => _pickTime(
+                            initial: _endTime,
+                            onPicked: (t) => setState(() => _endTime = t),
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
+                ),
+                const SizedBox(height: 20),
+
+                if (!_isEdit) ...[
+                  const Text(
+                    'Additional dates',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const Text(
+                    'Repeat this event on other dates using the same times and description.',
+                  ),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      for (final date in _additionalDates)
+                        InputChip(
+                          label: Text(_fmtDate(date)),
+                          onDeleted: () =>
+                              setState(() => _additionalDates.remove(date)),
+                        ),
+                      ActionChip(
+                        label: const Text('Add date'),
+                        avatar: const Icon(Icons.add, size: 18),
+                        onPressed: () => _pickDate(
+                          initial: _startDate,
+                          onPicked: (date) => setState(() {
+                            if (!DateUtils.isSameDay(date, _startDate)) {
+                              _additionalDates.add(DateUtils.dateOnly(date));
+                            }
+                          }),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
                 ],
-              ),
-              const SizedBox(height: 20),
 
-              // ── Optional: Class (leave null = school-wide) ──
-              _SectionLabel('Class  (leave blank for school-wide event)'),
-              const SizedBox(height: 8),
-              classAsync.when(
-                loading: () => const LinearProgressIndicator(),
-                error: (e, _) => Text('Could not load classes: $e'),
-                data: (classes) => DropdownButtonFormField<String?>(
-                  initialValue: _classId,
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.class_),
-                    hintText: 'School-wide (all classes)',
-                  ),
-                  items: [
-                    const DropdownMenuItem<String?>(
-                      value: null,
-                      child: Text('School-wide'),
-                    ),
-                    ...classes.map(
-                      (c) => DropdownMenuItem<String?>(
-                        value: c['classid'] as String,
-                        child: Text(c['classname'] as String),
+                // ── Optional: Class (leave null = school-wide) ──
+                _SectionLabel('Class  (leave blank for school-wide event)'),
+                const SizedBox(height: 8),
+                classAsync.when(
+                  loading: () => const LinearProgressIndicator(),
+                  error: (e, _) => Text('Could not load classes: $e'),
+                  data: (classes) => Column(
+                    children: [
+                      DropdownButtonFormField<String?>(
+                        initialValue: _applyToAllClasses ? null : _classId,
+                        decoration: const InputDecoration(
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.class_),
+                          hintText: 'School-wide (all classes)',
+                        ),
+                        items: [
+                          const DropdownMenuItem<String?>(
+                            value: null,
+                            child: Text('School-wide'),
+                          ),
+                          ...classes.map(
+                            (c) => DropdownMenuItem<String?>(
+                              value: c['classid'] as String,
+                              child: Text(c['classroomname'] as String),
+                            ),
+                          ),
+                        ],
+                        onChanged: _applyToAllClasses
+                            ? null
+                            : (v) => setState(() => _classId = v),
                       ),
-                    ),
-                  ],
-                  onChanged: (v) => setState(() => _classId = v),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // ── Optional: Academic year ─────────────────────
-              _SectionLabel('Academic Year  (optional)'),
-              const SizedBox(height: 8),
-              yearsAsync.when(
-                loading: () => const LinearProgressIndicator(),
-                error: (e, _) => Text('Could not load academic years: $e'),
-                data: (years) => DropdownButtonFormField<String?>(
-                  initialValue: _academicYearId,
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.calendar_month),
-                    hintText: 'Not linked to a term',
+                      if (_type == CalendarEventType.timetable) ...[
+                        const SizedBox(height: 8),
+                        CheckboxListTile(
+                          title: const Text('Apply to all classes'),
+                          subtitle: const Text(
+                            'Create this event for every class',
+                          ),
+                          value: _applyToAllClasses,
+                          onChanged: (v) => setState(() {
+                            _applyToAllClasses = v ?? false;
+                            if (_applyToAllClasses) _classId = null;
+                          }),
+                          contentPadding: EdgeInsets.zero,
+                          controlAffinity: ListTileControlAffinity.leading,
+                        ),
+                      ],
+                    ],
                   ),
-                  items: [
-                    const DropdownMenuItem<String?>(
-                      value: null,
-                      child: Text('Not linked'),
+                ),
+                const SizedBox(height: 16),
+
+                // ── Optional: Academic year ─────────────────────
+                _SectionLabel('Academic Year  (optional)'),
+                const SizedBox(height: 8),
+                yearsAsync.when(
+                  loading: () => const LinearProgressIndicator(),
+                  error: (e, _) => Text('Could not load academic years: $e'),
+                  data: (years) => DropdownButtonFormField<String?>(
+                    initialValue: _academicYearId,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.calendar_month),
+                      hintText: 'Not linked to a term',
                     ),
-                    ...years.map(
-                      (y) => DropdownMenuItem<String?>(
-                        value: y['academicyearid'] as String,
-                        child: Text('${y['academicyear']} — ${y['term']}'),
+                    items: [
+                      const DropdownMenuItem<String?>(
+                        value: null,
+                        child: Text('Not linked'),
                       ),
-                    ),
-                  ],
-                  onChanged: (v) => setState(() => _academicYearId = v),
+                      ...years.map(
+                        (y) => DropdownMenuItem<String?>(
+                          value: y['academicyearid'] as String,
+                          child: Text(formatAcademicYear(y['academicyear'])),
+                        ),
+                      ),
+                    ],
+                    onChanged: (v) => setState(() => _academicYearId = v),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
+                const SizedBox(height: 16),
 
-              // ── Description ────────────────────────────────
-              TextFormField(
-                controller: _descCtrl,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  labelText: 'Description (optional)',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.notes),
-                  alignLabelWithHint: true,
+                // ── Description ────────────────────────────────
+                TextFormField(
+                  controller: _descCtrl,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: 'Description (optional)',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.notes),
+                    alignLabelWithHint: true,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 32),
+                const SizedBox(height: 32),
 
-              // ── Submit ─────────────────────────────────────
-              FilledButton.icon(
-                onPressed: _saving ? null : () => _save(staffId),
-                icon: Icon(_isEdit ? Icons.save : Icons.add),
-                label: Text(_isEdit ? 'Save Changes' : 'Create Event'),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(52),
+                // ── Submit ─────────────────────────────────────
+                FilledButton.icon(
+                  onPressed: _saving ? null : () => _save(),
+                  icon: Icon(_isEdit ? Icons.save : Icons.add),
+                  label: Text(_isEdit ? 'Save Changes' : 'Create Event'),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(52),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
-            ],
+                const SizedBox(height: 16),
+              ],
+            ),
           ),
         ),
       ),

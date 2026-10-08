@@ -47,5 +47,33 @@ void main() {
       );
       expect(s.toInsertJson()['dateofbirth'], '2011-06-01');
     });
+
+    test('preserves the enrollment status value from the database', () {
+      final json = {
+        'studentid': 'student-uuid-001',
+        'firstname': 'Amina',
+        'middlename': null,
+        'lastname': 'Hassan',
+        'gender': 'FEMALE',
+        'dateofbirth': '2010-03-15',
+        'physicaladdress': null,
+        'enrollmentstatus': 'ENROLLED',
+      };
+
+      expect(Student.fromJson(json).enrollmentStatus, 'ENROLLED');
+    });
+
+    test('keeps serialized enrollment status unchanged', () {
+      final student = Student(
+        studentId: 'x',
+        firstName: 'Test',
+        lastName: 'User',
+        gender: 'MALE',
+        dateOfBirth: DateTime(2011, 6, 1),
+        enrollmentStatus: 'ENROLLED',
+      );
+
+      expect(student.toInsertJson()['enrollmentstatus'], 'ENROLLED');
+    });
   });
 }

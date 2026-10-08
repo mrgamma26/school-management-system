@@ -4,7 +4,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const ALLOWED_CALLER_ROLES = ["SUPER_USER", "SYSTEM_ADMIN"];
+const ALLOWED_CALLER_ROLES = ["SUPER_USER"];
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -54,6 +54,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const { targetUserId } = await req.json();
     if (!targetUserId) {
       return jsonResponse({ error: "targetUserId is required." }, 400);
+    }
+    if (targetUserId === callerData.user.id) {
+      return jsonResponse({ error: "You cannot deactivate your own account." }, 400);
     }
 
     // Soft-delete: set isactive = false. Never hard-delete a user.

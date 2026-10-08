@@ -1,26 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/database/supabase_client.dart';
+import 'package:go_router/go_router.dart';
 import '../../../../core/widgets/app_widgets.dart';
+import '../../../../widgets/can.dart';
+import '../../../../widgets/skeleton_loader.dart';
 import '../../../authentication/presentation/providers/auth_provider.dart';
 import '../../../users/data/repositories/user_repository.dart';
-import 'create_user_page.dart';
-import 'user_details_page.dart';
 
 // FIX 3: Enhanced with search, sort, and pagination
 
 final _allUsersProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-      final rows = await supabase
-          .from('systemuser')
-          .select('''
-        userid, username, mustchangepassword, isactive, createdat,
-        role(rolename),
-        staff(firstname, lastname, email, employeenumber),
-        guardian(firstname, lastname, email)
-      ''')
-          .order('createdat', ascending: false);
-      return List<Map<String, dynamic>>.from(rows as List);
+      return UserRepository().listAllSystemUsers();
     });
 
 final userRepositoryProvider = Provider<UserRepository>(
@@ -138,14 +129,23 @@ class _UserManagementPageState extends ConsumerState<UserManagementPage> {
   @override
   Widget build(BuildContext context) {
     final async = ref.watch(_allUsersProvider);
-    final role = ref.watch(authProvider).user?.roleName ?? '';
     final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('User Management'),
         actions: [
-          HomeButton(roleName: role),
+          Can(
+            permission: 'users:create',
+            child: IconButton(
+              icon: const Icon(Icons.badge_outlined),
+              tooltip: 'Add Staff',
+              onPressed: () async {
+                await context.push<bool>('/users/staff/new');
+                if (context.mounted) ref.invalidate(_allUsersProvider);
+              },
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.refresh_outlined),
             tooltip: 'Refresh',
@@ -153,20 +153,20 @@ class _UserManagementPageState extends ConsumerState<UserManagementPage> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          await Navigator.push<bool>(
-            context,
-            MaterialPageRoute(builder: (_) => const CreateUserPage()),
-          );
-          // Always refresh after returning - user may have been created.
-          if (context.mounted) ref.invalidate(_allUsersProvider);
-        },
-        icon: const Icon(Icons.person_add),
-        label: const Text('Add User'),
+      floatingActionButton: Can(
+        permission: 'users:create',
+        child: FloatingActionButton.extended(
+          onPressed: () async {
+            await context.push<bool>('/admin/users/create');
+            // Always refresh after returning - user may have been created.
+            if (context.mounted) ref.invalidate(_allUsersProvider);
+          },
+          icon: const Icon(Icons.person_add),
+          label: const Text('Add User'),
+        ),
       ),
       body: async.when(
-        loading: () => const LoadingState(message: 'Loading users...'),
+        loading: () => const SkeletonListLoader(itemCount: 6, itemHeight: 88),
         error: (e, _) => ErrorState(
           error: e,
           onRetry: () => ref.invalidate(_allUsersProvider),
@@ -267,7 +267,7 @@ class _UserManagementPageState extends ConsumerState<UserManagementPage> {
               // Sort dropdown
               Expanded(
                 child: DropdownButtonFormField<String>(
-                  value: _sortBy,
+                  initialValue: _sortBy,
                   decoration: const InputDecoration(
                     labelText: 'Sort by',
                     prefixIcon: Icon(Icons.sort),
@@ -379,6 +379,10 @@ class _UserManagementPageState extends ConsumerState<UserManagementPage> {
     final isActive = u['isactive'] as bool;
     final mustChange = u['mustchangepassword'] as bool;
     final roleName = role?['rolename'] as String? ?? 'No Role';
+    final currentUser = ref.read(authProvider).user;
+    final canDeactivate =
+        currentUser?.roleName.toUpperCase() == 'SUPER_USER' &&
+        currentUser?.userId != u['userid'];
 
     String displayName = u['username'] as String;
     String? email;
@@ -470,17 +474,72 @@ class _UserManagementPageState extends ConsumerState<UserManagementPage> {
           ],
         ),
         isThreeLine: true,
-        trailing: const Icon(Icons.chevron_right),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (canDeactivate && isActive)
+              IconButton(
+                icon: const Icon(Icons.delete_outline, color: Colors.red),
+                tooltip: 'Deactivate user',
+                onPressed: () =>
+                    _confirmDeactivation(context, ref, u, displayName),
+              ),
+            const Icon(Icons.chevron_right),
+          ],
+        ),
         onTap: () async {
-          await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => UserDetailsPage(userId: u['userid'] as String),
-            ),
-          );
+          await context.push('/admin/users/${u['userid']}');
           if (context.mounted) ref.invalidate(_allUsersProvider);
         },
       ),
     );
+  }
+
+  Future<void> _confirmDeactivation(
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, dynamic> user,
+    String displayName,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.warning_amber_rounded, color: Colors.orange),
+        title: const Text('Deactivate user?'),
+        content: Text(
+          '$displayName will no longer be able to sign in. Their school records will be kept.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Deactivate'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    try {
+      await ref
+          .read(userRepositoryProvider)
+          .deactivateUserSecure(user['userid'] as String);
+      ref.invalidate(_allUsersProvider);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$displayName was deactivated.')),
+        );
+      }
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not deactivate user: $error')),
+        );
+      }
+    }
   }
 }

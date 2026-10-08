@@ -1,23 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/database/supabase_client.dart';
+import 'package:go_router/go_router.dart';
 import '../../../users/data/repositories/user_repository.dart';
 import '../../../../core/services/audit_service.dart';
 import '../../../authentication/presentation/providers/auth_provider.dart';
-import 'manage_permissions_page.dart';
+import '../../../../widgets/can.dart';
+import '../../../../widgets/skeleton_loader.dart';
 
 final _userDetailsProvider =
     FutureProvider.family<Map<String, dynamic>, String>((ref, userId) async {
-      return await supabase
-          .from('systemuser')
-          .select('''
-        userid, username, mustchangepassword, isactive, createdat, updatedat,
-        role(roleid, rolename, description),
-        staff(staffid, firstname, lastname, email, employeenumber),
-        guardian(guardianid, firstname, lastname, email, phonenumber, physicaladdress)
-      ''')
-          .eq('userid', userId)
-          .single();
+      return UserRepository().getSystemUserWithDetails(userId);
     });
 
 /// Detailed view of a system user with admin controls.
@@ -33,6 +25,7 @@ class UserDetailsPage extends ConsumerStatefulWidget {
 class _UserDetailsPageState extends ConsumerState<UserDetailsPage> {
   final _repo = UserRepository();
   bool _loading = false;
+  bool? _optimisticIsActive;
 
   // FIX 4: Role change functionality
   Future<void> _changeRole(Map<String, dynamic> user) async {
@@ -53,6 +46,7 @@ class _UserDetailsPageState extends ConsumerState<UserDetailsPage> {
     }
 
     // Show role selection dialog
+    if (!mounted) return;
     final selectedRole = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -79,7 +73,9 @@ class _UserDetailsPageState extends ConsumerState<UserDetailsPage> {
                     return RadioListTile<Map<String, dynamic>>(
                       title: Text(roleName),
                       value: role,
+                      // ignore: deprecated_member_use
                       groupValue: isCurrent ? role : null,
+                      // ignore: deprecated_member_use
                       onChanged: isCurrent
                           ? null
                           : (value) => Navigator.pop(ctx, value),
@@ -101,7 +97,8 @@ class _UserDetailsPageState extends ConsumerState<UserDetailsPage> {
 
     if (selectedRole == null) return;
 
-    // Confirm the role change
+    // Confirm the role change — guard context use after the previous await.
+    if (!mounted) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -164,7 +161,7 @@ class _UserDetailsPageState extends ConsumerState<UserDetailsPage> {
         ).showSnackBar(SnackBar(content: Text('Error changing role: $e')));
       }
     } finally {
-      setState(() => _loading = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -196,7 +193,10 @@ class _UserDetailsPageState extends ConsumerState<UserDetailsPage> {
 
     if (confirmed != true) return;
 
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _optimisticIsActive = !isActive;
+    });
     try {
       if (isActive) {
         await _repo.deactivateUser(widget.userId);
@@ -214,7 +214,12 @@ class _UserDetailsPageState extends ConsumerState<UserDetailsPage> {
         actorRole: currentUser.roleName,
       );
 
-      ref.invalidate(_userDetailsProvider(widget.userId));
+      final refreshedUser = await ref.refresh(
+        _userDetailsProvider(widget.userId).future,
+      );
+      if (refreshedUser['isactive'] != !isActive) {
+        throw StateError('The account status did not update.');
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -222,7 +227,12 @@ class _UserDetailsPageState extends ConsumerState<UserDetailsPage> {
         ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     } finally {
-      setState(() => _loading = false);
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _optimisticIsActive = null;
+        });
+      }
     }
   }
 
@@ -317,13 +327,13 @@ class _UserDetailsPageState extends ConsumerState<UserDetailsPage> {
         ],
       ),
       body: async.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const SkeletonListLoader(itemCount: 4, itemHeight: 110),
         error: (e, _) => Center(child: Text('Error: $e')),
         data: (user) {
           final role = user['role'] as Map<String, dynamic>?;
           final staff = user['staff'] as Map<String, dynamic>?;
           final guardian = user['guardian'] as Map<String, dynamic>?;
-          final isActive = user['isactive'] as bool;
+          final isActive = _optimisticIsActive ?? user['isactive'] as bool;
           final mustChange = user['mustchangepassword'] as bool;
 
           return SingleChildScrollView(
@@ -401,29 +411,38 @@ class _UserDetailsPageState extends ConsumerState<UserDetailsPage> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     // FIX 4: Change Role button
-                    ElevatedButton.icon(
-                      onPressed: _loading ? null : () => _changeRole(user),
-                      icon: const Icon(Icons.swap_horiz),
-                      label: const Text('Change Role'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange,
+                    Can(
+                      permission: 'permissions:manage',
+                      child: ElevatedButton.icon(
+                        onPressed: _loading ? null : () => _changeRole(user),
+                        icon: const Icon(Icons.swap_horiz),
+                        label: const Text('Change Role'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),
-                    ElevatedButton.icon(
-                      onPressed: _loading
-                          ? null
-                          : () => _toggleUserStatus(user),
-                      icon: Icon(isActive ? Icons.block : Icons.check_circle),
-                      label: Text(
-                        isActive ? 'Deactivate User' : 'Reactivate User',
+                    Can(
+                      permission: 'users:deactivate',
+                      child: ElevatedButton.icon(
+                        onPressed: _loading
+                            ? null
+                            : () => _toggleUserStatus(user),
+                        icon: Icon(isActive ? Icons.block : Icons.check_circle),
+                        label: Text(
+                          isActive ? 'Deactivate User' : 'Reactivate User',
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),
-                    OutlinedButton.icon(
-                      onPressed: _loading ? null : _resetPassword,
-                      icon: const Icon(Icons.lock_reset),
-                      label: const Text('Reset Password'),
+                    Can(
+                      permission: 'users:reset_password',
+                      child: OutlinedButton.icon(
+                        onPressed: _loading ? null : _resetPassword,
+                        icon: const Icon(Icons.lock_reset),
+                        label: const Text('Reset Password'),
+                      ),
                     ),
                     const SizedBox(height: 8),
 
@@ -444,20 +463,17 @@ class _UserDetailsPageState extends ConsumerState<UserDetailsPage> {
                       style: const TextStyle(color: Colors.grey, fontSize: 12),
                     ),
                     const SizedBox(height: 10),
-                    FilledButton.icon(
-                      onPressed: role == null
-                          ? null
-                          : () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => ManagePermissionsPage(
-                                  roleId: role['roleid'] as String,
-                                  roleName: role['rolename'] as String,
-                                ),
+                    Can(
+                      permission: 'permissions:manage',
+                      child: FilledButton.icon(
+                        onPressed: role == null
+                            ? null
+                            : () => context.go(
+                                '/admin/roles/${role['roleid']}/permissions?roleName=${Uri.encodeComponent(role['rolename'] as String)}',
                               ),
-                            ),
-                      icon: const Icon(Icons.admin_panel_settings),
-                      label: const Text('Manage Role Permissions'),
+                        icon: const Icon(Icons.admin_panel_settings),
+                        label: const Text('Manage Role Permissions'),
+                      ),
                     ),
                   ],
                 ),

@@ -43,6 +43,7 @@ migrate_working_dir/
 *-output.txt
 *-error.txt
 node_modules/
+repomix-output.xml
 
 # Symbolication related
 app.*.symbols

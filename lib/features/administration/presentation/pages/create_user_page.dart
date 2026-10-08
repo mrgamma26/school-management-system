@@ -1,8 +1,11 @@
 import 'dart:math';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/widgets/app_widgets.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../core/utils/form_state_persistence.dart';
+import '../../../../widgets/skeleton_loader.dart';
 import '../../../authentication/presentation/providers/auth_provider.dart';
 import '../../../users/data/repositories/user_repository.dart';
 
@@ -45,21 +48,83 @@ class _CreateUserPageState extends ConsumerState<CreateUserPage> {
   final _addressCtrl = TextEditingController();
   final _employeeNumberCtrl = TextEditingController();
 
-  String _userType = 'STAFF';
+  final String _userType = 'STAFF'; // Only STAFF, no guardian option
   String _gender = 'MALE';
   String? _selectedRoleId;
   List<Map<String, dynamic>> _roles = [];
   bool _loading = false;
+  bool _rolesLoading = true;
+  bool _restoringDraft = true;
+  bool _draftSaved = false;
+  bool _draftCommitted = false;
+  bool _draftDirty = false;
+  late final AutoSaveDebouncer _draftSaver;
   String? _error;
+
+  late final String _draftId;
+
+  void _scheduleDraft() {
+    if (!_restoringDraft && !_loading) {
+      _draftDirty = true;
+      _draftSaver.save();
+    }
+  }
+
+  Future<void> _saveDraft() async {
+    if (!_draftDirty || _draftCommitted) return;
+    final saved =
+        await FormStatePersistence.saveFormStateWithTimestamp(_draftId, {
+          'email': _emailCtrl.text,
+          'firstName': _firstNameCtrl.text,
+          'middleName': _middleNameCtrl.text,
+          'lastName': _lastNameCtrl.text,
+          'phone': _phoneCtrl.text,
+          'address': _addressCtrl.text,
+          'employeeNumber': _employeeNumberCtrl.text,
+          'gender': _gender,
+          'roleId': _selectedRoleId,
+        });
+    if (mounted && saved) setState(() => _draftSaved = true);
+  }
+
+  Future<void> _restoreDraft() async {
+    final data = await FormStatePersistence.loadFormState(_draftId);
+    if (!mounted) return;
+    setState(() {
+      if (data != null) {
+        _emailCtrl.text = data['email'] as String? ?? '';
+        _firstNameCtrl.text = data['firstName'] as String? ?? '';
+        _middleNameCtrl.text = data['middleName'] as String? ?? '';
+        _lastNameCtrl.text = data['lastName'] as String? ?? '';
+        _phoneCtrl.text = data['phone'] as String? ?? '';
+        _addressCtrl.text = data['address'] as String? ?? '';
+        _employeeNumberCtrl.text = data['employeeNumber'] as String? ?? '';
+        _gender = data['gender'] as String? ?? _gender;
+        final roleId = data['roleId'] as String?;
+        if (_roles.any((role) => role['roleid'] == roleId)) {
+          _selectedRoleId = roleId;
+        }
+        _draftSaved = true;
+      }
+      _restoringDraft = false;
+    });
+  }
 
   @override
   void initState() {
     super.initState();
-    _loadRoles();
+    _draftId =
+        'create_user_${ref.read(authProvider).user?.userId ?? 'unknown'}';
+    _draftSaver = AutoSaveDebouncer(onSave: _saveDraft);
+    _loadRoles().then((_) => _restoreDraft());
   }
 
   @override
   void dispose() {
+    _draftSaver.dispose();
+    if (!_restoringDraft && !_draftCommitted && _draftDirty) {
+      unawaited(_saveDraft());
+    }
     _emailCtrl.dispose();
     _firstNameCtrl.dispose();
     _middleNameCtrl.dispose();
@@ -73,8 +138,20 @@ class _CreateUserPageState extends ConsumerState<CreateUserPage> {
   Future<void> _loadRoles() async {
     try {
       final roles = await _repo.listRoles();
-      if (mounted) setState(() => _roles = roles);
-    } catch (_) {}
+      if (mounted) {
+        setState(() {
+          _roles = roles;
+          _rolesLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _rolesLoading = false;
+          _error = 'Failed to load roles. Please try again.';
+        });
+      }
+    }
   }
 
   Future<void> _submit() async {
@@ -92,8 +169,6 @@ class _CreateUserPageState extends ConsumerState<CreateUserPage> {
     final generatedPassword = _generatePassword();
 
     try {
-      final currentUser = ref.read(authProvider).user!;
-
       final payload = {
         'email': _emailCtrl.text.trim(),
         'password': generatedPassword,
@@ -122,10 +197,13 @@ class _CreateUserPageState extends ConsumerState<CreateUserPage> {
       };
 
       await _repo.createUser(payload);
+      _draftCommitted = true;
+      _draftSaver.cancel();
+      await FormStatePersistence.clearFormState(_draftId);
 
       if (!mounted) return;
 
-      // Show the generated password to the admin before popping.
+      // Show the generated password to the admin before navigating back.
       await _showPasswordDialog(
         context: context,
         name: '${_firstNameCtrl.text.trim()} ${_lastNameCtrl.text.trim()}',
@@ -133,7 +211,10 @@ class _CreateUserPageState extends ConsumerState<CreateUserPage> {
         password: generatedPassword,
       );
 
-      if (mounted) Navigator.pop(context, true);
+      // Navigate back after dialog is confirmed (dialog closes and this code runs).
+      if (mounted) {
+        context.go('/admin/users');
+      }
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
@@ -157,219 +238,204 @@ class _CreateUserPageState extends ConsumerState<CreateUserPage> {
 
   @override
   Widget build(BuildContext context) {
-    final role = ref.watch(authProvider).user?.roleName ?? '';
-
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Create User'),
-        actions: [HomeButton(roleName: role)],
-      ),
+      appBar: AppBar(title: const Text('Create User')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // User type toggle
-              const Text(
-                'User Type',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(value: 'STAFF', label: Text('Staff')),
-                  ButtonSegment(value: 'GUARDIAN', label: Text('Guardian')),
-                ],
-                selected: {_userType},
-                onSelectionChanged: (set) {
-                  setState(() {
-                    _userType = set.first;
-                    _selectedRoleId = null;
-                  });
-                },
-              ),
-              const SizedBox(height: 16),
-
-              // Email
-              _textField(
-                _emailCtrl,
-                'Email address',
-                required: true,
-                keyboardType: TextInputType.emailAddress,
-                hint: 'user@school.com',
-              ),
-
-              // Role dropdown - filtered by user type
-              if (_roles.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                DropdownButtonFormField<String>(
-                  initialValue: _selectedRoleId,
-                  decoration: const InputDecoration(labelText: 'Role *'),
-                  items: _roles
-                      .where((r) {
-                        final rn = (r['rolename'] as String).toUpperCase();
-                        if (_userType == 'GUARDIAN') {
-                          return rn == 'GUARDIAN';
-                        }
-                        return rn != 'GUARDIAN';
-                      })
-                      .map(
-                        (r) => DropdownMenuItem<String>(
-                          value: r['roleid'] as String,
-                          child: Text(r['rolename'] as String),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (v) => setState(() => _selectedRoleId = v),
-                  validator: (v) => v == null ? 'Please select a role.' : null,
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.info_outline,
-                      size: 14,
-                      color: Colors.grey,
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
+        child: AutofillGroup(
+          child: Form(
+            key: _formKey,
+            onChanged: _scheduleDraft,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_restoringDraft || _rolesLoading) ...[
+                  const SkeletonFormField(),
+                  const SizedBox(height: 12),
+                  const SkeletonFormField(),
+                ] else ...[
+                  if (_draftSaved && !_loading)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
                       child: Text(
-                        'Need a role that is not listed? Go to User Management -> '
-                        'select any user -> Manage Permissions to create new roles.',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.grey.shade600,
-                        ),
+                        'Draft saved on this device',
+                        style: Theme.of(context).textTheme.labelSmall,
                       ),
                     ),
-                  ],
-                ),
-              ],
+                  // Staff creation info
+                  const Text(
+                    'Create Staff Member',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Guardians are created automatically when you register a student.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
+                  const SizedBox(height: 16),
 
-              const SizedBox(height: 16),
-              const Divider(),
-              const Text(
-                'Personal Information',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
+                  // Email
+                  _textField(
+                    _emailCtrl,
+                    'Email address',
+                    required: true,
+                    keyboardType: TextInputType.emailAddress,
+                    hint: 'user@school.com',
+                  ),
 
-              _textField(_firstNameCtrl, 'First Name', required: true),
-              _textField(_middleNameCtrl, 'Middle Name'),
-              _textField(_lastNameCtrl, 'Last Name', required: true),
-
-              DropdownButtonFormField<String>(
-                initialValue: _gender,
-                decoration: const InputDecoration(labelText: 'Gender'),
-                items: const [
-                  DropdownMenuItem(value: 'MALE', child: Text('Male')),
-                  DropdownMenuItem(value: 'FEMALE', child: Text('Female')),
-                ],
-                onChanged: (v) => setState(() => _gender = v!),
-              ),
-
-              // Staff-specific fields
-              if (_userType == 'STAFF') ...[
-                const SizedBox(height: 16),
-                const Divider(),
-                const Text(
-                  'Staff Information',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                _textField(
-                  _employeeNumberCtrl,
-                  'Employee Number',
-                  required: true,
-                ),
-              ],
-
-              // Guardian-specific fields
-              if (_userType == 'GUARDIAN') ...[
-                const SizedBox(height: 16),
-                const Divider(),
-                const Text(
-                  'Contact Details',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                _textField(
-                  _phoneCtrl,
-                  'Phone Number',
-                  keyboardType: TextInputType.phone,
-                ),
-                _textField(_addressCtrl, 'Physical Address', maxLines: 2),
-              ],
-
-              // Password note
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue.shade200),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.lock_outline,
-                      color: Colors.blue.shade700,
-                      size: 18,
+                  // Role dropdown - show only staff roles
+                  if (_roles.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    DropdownButtonFormField<String>(
+                      initialValue: _selectedRoleId,
+                      decoration: const InputDecoration(labelText: 'Role *'),
+                      items: _roles
+                          .where((r) {
+                            final rn = (r['rolename'] as String).toUpperCase();
+                            return rn != 'GUARDIAN';
+                          })
+                          .map(
+                            (r) => DropdownMenuItem<String>(
+                              value: r['roleid'] as String,
+                              child: Text(r['rolename'] as String),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (v) => setState(() => _selectedRoleId = v),
+                      validator: (v) =>
+                          v == null ? 'Please select a role.' : null,
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'A secure temporary password will be generated and shown to you '
-                        'after the account is created. The user will be required to '
-                        'change it on first login.',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.blue.shade800,
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.info_outline,
+                          size: 14,
+                          color: Colors.grey,
                         ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              if (_error != null) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.red.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    _error!,
-                    style: TextStyle(color: Colors.red.shade800, fontSize: 13),
-                  ),
-                ),
-              ],
-
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: _loading ? null : _submit,
-                  icon: _loading
-                      ? const SizedBox(
-                          height: 16,
-                          width: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Need a role that is not listed? Go to User Management -> '
+                            'select any user -> Manage Permissions to create new roles.',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey.shade600,
+                            ),
                           ),
-                        )
-                      : const Icon(Icons.person_add),
-                  label: Text(_loading ? 'Creating...' : 'Create Account'),
-                ),
-              ),
-              const SizedBox(height: 32),
-            ],
+                        ),
+                      ],
+                    ),
+                  ],
+
+                  const SizedBox(height: 16),
+                  const Divider(),
+                  const Text(
+                    'Personal Information',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+
+                  _textField(_firstNameCtrl, 'First Name', required: true),
+                  _textField(_middleNameCtrl, 'Middle Name'),
+                  _textField(_lastNameCtrl, 'Last Name', required: true),
+
+                  DropdownButtonFormField<String>(
+                    initialValue: _gender,
+                    decoration: const InputDecoration(labelText: 'Gender'),
+                    items: const [
+                      DropdownMenuItem(value: 'MALE', child: Text('Male')),
+                      DropdownMenuItem(value: 'FEMALE', child: Text('Female')),
+                    ],
+                    onChanged: (v) => setState(() => _gender = v!),
+                  ),
+
+                  // Staff-specific fields
+                  const SizedBox(height: 16),
+                  const Divider(),
+                  const Text(
+                    'Staff Information',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  _textField(
+                    _employeeNumberCtrl,
+                    'Employee Number',
+                    required: true,
+                  ),
+
+                  // Password note
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue.shade200),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.lock_outline,
+                          color: Colors.blue.shade700,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'A secure temporary password will be generated and shown to you '
+                            'after the account is created. The user will be required to '
+                            'change it on first login.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.blue.shade800,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  if (_error != null) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        _error!,
+                        style: TextStyle(
+                          color: Colors.red.shade800,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ],
+
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: _loading ? null : _submit,
+                      icon: _loading
+                          ? const SizedBox(
+                              height: 16,
+                              width: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.person_add),
+                      label: Text(_loading ? 'Creating...' : 'Create Account'),
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                ],
+              ],
+            ),
           ),
         ),
       ),
@@ -388,6 +454,15 @@ class _CreateUserPageState extends ConsumerState<CreateUserPage> {
       padding: const EdgeInsets.only(bottom: 12),
       child: TextFormField(
         controller: controller,
+        autofillHints: switch (label) {
+          'Email address' => const [AutofillHints.email],
+          'First Name' => const [AutofillHints.givenName],
+          'Middle Name' => const [AutofillHints.middleName],
+          'Last Name' => const [AutofillHints.familyName],
+          'Phone Number' => const [AutofillHints.telephoneNumber],
+          'Physical Address' => const [AutofillHints.fullStreetAddress],
+          _ => null,
+        },
         keyboardType: keyboardType,
         maxLines: maxLines ?? 1,
         decoration: InputDecoration(labelText: label, hintText: hint),
@@ -518,7 +593,7 @@ class _PasswordCreatedDialogState extends State<_PasswordCreatedDialog> {
       ),
       actions: [
         FilledButton(
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => Navigator.of(context).pop(),
           child: const Text('Done'),
         ),
       ],

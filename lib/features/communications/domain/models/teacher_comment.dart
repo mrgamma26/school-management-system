@@ -45,7 +45,7 @@ class TeacherComment {
           ? '${staff['firstname']} ${staff['lastname']}'
           : null,
       academicYearLabel: yr != null
-          ? '${yr['academicyear']} – ${yr['termname']}'
+          ? '${yr['academicyear']} – ${yr['term']}'
           : null,
     );
   }

@@ -34,6 +34,10 @@ The release gate is:
 
 Preserve the project’s current source, migrations, tests, documentation, and platform files. Remove only confirmed temporary or backup artifacts. Review the complete staged file list and secret scan before committing. Push the verified commit history to `main` without rewriting history or force-pushing.
 
+## User-manual operating sequence
+
+Document the system as a dependency-ordered school workflow rather than a disconnected list of screens. For every role, identify the outcome that role owns, the records that must exist first, the exact task sequence, the evidence of success, and the next role that consumes the result. The primary order is Super User, Administrator, parallel Teacher and Accountant work, Head Teacher progression after Teacher submission, then Guardian verification. Calendar and communication work is ongoing across the year.
+
 ## Failure handling
 
 If analysis or tests still fail, do not push `main`; report and repair the failure first. If GitHub rejects a normal push because the branch is protected or remote history changed, stop and report the exact blocker rather than bypassing protection.

@@ -1,6 +1,5 @@
 // ── FIX 11: Role-based Navigation Items ──────────────────────────────────────
 // Dynamically generates navigation menu items based on user role.
-// Uses the route access control map from FIX 5 to ensure consistency.
 
 import 'package:flutter/material.dart';
 import '../../widgets/app_shell.dart';
@@ -58,40 +57,10 @@ const List<NavItem> _superAdminNav = [
     route: '/users/staff',
   ),
   NavItem(
-    label: 'Guardians',
-    icon: Icons.family_restroom_outlined,
-    activeIcon: Icons.family_restroom,
-    route: '/users/guardians',
-  ),
-  NavItem(
-    label: 'Academics',
-    icon: Icons.book_outlined,
-    activeIcon: Icons.book,
-    route: '/academics/years',
-  ),
-  NavItem(
-    label: 'Finance',
-    icon: Icons.payments_outlined,
-    activeIcon: Icons.payments,
-    route: '/finance/payments',
-  ),
-  NavItem(
     label: 'Calendar',
     icon: Icons.calendar_month_outlined,
     activeIcon: Icons.calendar_month,
     route: '/calendar',
-  ),
-  NavItem(
-    label: 'Assessments',
-    icon: Icons.assignment_outlined,
-    activeIcon: Icons.assignment,
-    route: '/assessments',
-  ),
-  NavItem(
-    label: 'Reviews',
-    icon: Icons.rate_review_outlined,
-    activeIcon: Icons.rate_review,
-    route: '/progression/reviews',
   ),
   NavItem(
     label: 'Reports',
@@ -147,18 +116,6 @@ const List<NavItem> _administratorNav = [
     route: '/calendar',
   ),
   NavItem(
-    label: 'Assessments',
-    icon: Icons.assignment_outlined,
-    activeIcon: Icons.assignment,
-    route: '/assessments',
-  ),
-  NavItem(
-    label: 'Reviews',
-    icon: Icons.rate_review_outlined,
-    activeIcon: Icons.rate_review,
-    route: '/progression/reviews',
-  ),
-  NavItem(
     label: 'Reports',
     icon: Icons.analytics_outlined,
     activeIcon: Icons.analytics,
@@ -192,12 +149,6 @@ const List<NavItem> _headTeacherNav = [
     icon: Icons.calendar_month_outlined,
     activeIcon: Icons.calendar_month,
     route: '/calendar',
-  ),
-  NavItem(
-    label: 'Assessments',
-    icon: Icons.assignment_outlined,
-    activeIcon: Icons.assignment,
-    route: '/assessments',
   ),
   NavItem(
     label: 'Reviews',

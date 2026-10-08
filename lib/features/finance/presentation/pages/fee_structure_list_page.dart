@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../../core/widgets/app_widgets.dart';
+import '../../../../core/errors/app_exception.dart';
+import '../../../../widgets/can.dart';
 import '../../data/finance_repository.dart';
 import '../../domain/models/fee_structure.dart';
-import '../../../authentication/presentation/providers/auth_provider.dart';
-import 'fee_structure_form_page.dart';
 
 final _feeStructuresProvider =
     FutureProvider.family<List<FeeStructure>, String>((ref, yearId) {
-      return FinanceRepository().listFeeStructures(yearId);
+      return FinanceRepository().listFeeStructures();
     });
 
 class FeeStructureListPage extends ConsumerStatefulWidget {
@@ -39,7 +40,7 @@ class _FeeStructureListPageState extends ConsumerState<FeeStructureListPage> {
           children: [
             const Text('Fee Structures'),
             Text(
-              widget.academicYearLabel,
+              'School-wide fees by academic year and term',
               style: TextStyle(
                 fontSize: 12,
                 color: cs.onSurface.withValues(alpha: 0.6),
@@ -49,7 +50,6 @@ class _FeeStructureListPageState extends ConsumerState<FeeStructureListPage> {
           ],
         ),
         actions: [
-          HomeButton(roleName: ref.watch(authProvider).user?.roleName ?? ''),
           IconButton(
             icon: const Icon(Icons.refresh_outlined),
             onPressed: () =>
@@ -57,21 +57,20 @@ class _FeeStructureListPageState extends ConsumerState<FeeStructureListPage> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          await Navigator.push<bool>(
-            context,
-            MaterialPageRoute(
-              builder: (_) =>
-                  FeeStructureFormPage(academicYearId: widget.academicYearId),
-            ),
-          );
-          if (mounted) {
-            ref.invalidate(_feeStructuresProvider(widget.academicYearId));
-          }
-        },
-        icon: const Icon(Icons.add),
-        label: const Text('Add Fee'),
+      floatingActionButton: Can(
+        permission: 'finance:manage_structures',
+        child: FloatingActionButton.extended(
+          onPressed: () async {
+            await context.push<bool>(
+              '/finance/fees/${widget.academicYearId}/new',
+            );
+            if (mounted) {
+              ref.invalidate(_feeStructuresProvider(widget.academicYearId));
+            }
+          },
+          icon: const Icon(Icons.add),
+          label: const Text('Add Fee'),
+        ),
       ),
       body: async.when(
         loading: () => const LoadingState(message: 'Loading fee structures…'),
@@ -85,26 +84,8 @@ class _FeeStructureListPageState extends ConsumerState<FeeStructureListPage> {
             return EmptyState(
               icon: Icons.price_change_outlined,
               title: 'No fee structures yet',
-              subtitle: 'Define fees for ${widget.academicYearLabel}.',
-              action: FilledButton.icon(
-                onPressed: () async {
-                  await Navigator.push<bool>(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => FeeStructureFormPage(
-                        academicYearId: widget.academicYearId,
-                      ),
-                    ),
-                  );
-                  if (mounted) {
-                    ref.invalidate(
-                      _feeStructuresProvider(widget.academicYearId),
-                    );
-                  }
-                },
-                icon: const Icon(Icons.add),
-                label: const Text('Add Fee'),
-              ),
+              subtitle:
+                  'Define school-wide fees for an academic year and term.',
             );
           }
 
@@ -171,9 +152,9 @@ class _FeeStructureListPageState extends ConsumerState<FeeStructureListPage> {
                           f.feeType,
                           style: const TextStyle(fontWeight: FontWeight.w600),
                         ),
-                        subtitle: f.className != null
+                        subtitle: f.academicYearLabel != null
                             ? Text(
-                                f.className!,
+                                f.academicYearLabel!,
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: cs.onSurface.withValues(alpha: 0.55),
@@ -192,27 +173,85 @@ class _FeeStructureListPageState extends ConsumerState<FeeStructureListPage> {
                               ),
                             ),
                             const SizedBox(width: 4),
-                            IconButton(
-                              icon: const Icon(Icons.edit_outlined, size: 18),
-                              tooltip: 'Edit',
-                              onPressed: () async {
-                                await Navigator.push<bool>(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => FeeStructureFormPage(
-                                      academicYearId: widget.academicYearId,
-                                      existing: f,
-                                    ),
-                                  ),
-                                );
-                                if (mounted) {
-                                  ref.invalidate(
-                                    _feeStructuresProvider(
-                                      widget.academicYearId,
+                            Can(
+                              permission: 'finance:manage_structures',
+                              child: IconButton(
+                                icon: const Icon(Icons.edit_outlined, size: 18),
+                                tooltip: 'Edit',
+                                onPressed: () async {
+                                  await context.push<bool>(
+                                    '/finance/fees/${widget.academicYearId}/${f.feeStructureId}/edit',
+                                    extra: f,
+                                  );
+                                  if (mounted) {
+                                    ref.invalidate(
+                                      _feeStructuresProvider(
+                                        widget.academicYearId,
+                                      ),
+                                    );
+                                  }
+                                },
+                              ),
+                            ),
+                            Can(
+                              permission: 'finance:manage_structures',
+                              child: IconButton(
+                                icon: const Icon(
+                                  Icons.delete_outline,
+                                  size: 18,
+                                  color: Colors.red,
+                                ),
+                                tooltip: 'Delete',
+                                onPressed: () async {
+                                  final confirmed = await showDialog<bool>(
+                                    context: context,
+                                    builder: (dialogContext) => AlertDialog(
+                                      title: const Text('Delete Fee'),
+                                      content: Text(
+                                        'Delete ${f.feeType}? Existing payments using this fee must be removed first.',
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(
+                                            dialogContext,
+                                            false,
+                                          ),
+                                          child: const Text('Cancel'),
+                                        ),
+                                        FilledButton(
+                                          onPressed: () => Navigator.pop(
+                                            dialogContext,
+                                            true,
+                                          ),
+                                          child: const Text('Delete'),
+                                        ),
+                                      ],
                                     ),
                                   );
-                                }
-                              },
+                                  if (confirmed != true) return;
+                                  try {
+                                    await FinanceRepository()
+                                        .deleteFeeStructure(f.feeStructureId);
+                                    if (context.mounted) {
+                                      ref.invalidate(
+                                        _feeStructuresProvider(
+                                          widget.academicYearId,
+                                        ),
+                                      );
+                                    }
+                                  } catch (error) {
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(friendlyError(error)),
+                                        ),
+                                      );
+                                    }
+                                  }
+                                },
+                              ),
                             ),
                           ],
                         ),

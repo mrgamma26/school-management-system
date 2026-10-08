@@ -10,7 +10,7 @@ END $$;
 
 -- Enrollment status enum
 DO $$ BEGIN
-  CREATE TYPE public.enrollment_status AS ENUM (
+  CREATE TYPE public.student_status_enum AS ENUM (
     'ENROLLED',
     'WITHDRAWN',
     'GRADUATED',

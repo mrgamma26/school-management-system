@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/widgets/app_widgets.dart';
-import '../../../authentication/presentation/providers/auth_provider.dart';
-import 'payment_list_page.dart';
-import 'adjustment_page.dart';
+import 'package:go_router/go_router.dart';
+import '../../data/finance_repository.dart';
+import '../../domain/models/payment.dart';
+
+final _studentAccountPaymentsProvider =
+    FutureProvider.family<List<Payment>, String>((ref, studentId) {
+      return FinanceRepository().paymentsForStudent(studentId);
+    });
 
 /// Student financial account overview — entry point for the accountant
-/// when they tap a student. Shows navigation tiles to Payments and Adjustments.
+/// when they tap a student. Shows payment entry and the student's history.
 class StudentAccountPage extends ConsumerWidget {
   final String studentId;
   final String studentName;
@@ -19,13 +23,8 @@ class StudentAccountPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final role = ref.watch(authProvider).user?.roleName ?? '';
-
     return Scaffold(
-      appBar: AppBar(
-        title: Text(studentName),
-        actions: [HomeButton(roleName: role)],
-      ),
+      appBar: AppBar(title: Text(studentName)),
       body: ListView(
         padding: const EdgeInsets.all(12),
         children: [
@@ -33,35 +32,69 @@ class StudentAccountPage extends ConsumerWidget {
             context,
             icon: Icons.payments,
             color: Colors.green,
-            title: 'Payments',
-            subtitle: 'View and record fee payments',
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => PaymentListPage(
-                  studentId: studentId,
-                  studentName: studentName,
-                ),
-              ),
-            ),
+            title: 'Record Payment',
+            subtitle: 'Add a fee payment for this student',
+            onTap: () async {
+              final saved = await context.push<bool>(
+                '/finance/students/$studentId/pay'
+                '?name=${Uri.encodeComponent(studentName)}',
+              );
+              if (saved == true) {
+                ref.invalidate(_studentAccountPaymentsProvider(studentId));
+              }
+            },
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Payment History',
+            style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 8),
-          _tile(
-            context,
-            icon: Icons.tune,
-            color: Colors.blue,
-            title: 'Adjustments',
-            subtitle: 'Discounts, waivers and penalties',
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => AdjustmentPage(
-                  studentId: studentId,
-                  studentName: studentName,
+          ref
+              .watch(_studentAccountPaymentsProvider(studentId))
+              .when(
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (error, _) => Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text('Could not load payment history: $error'),
+                  ),
                 ),
+                data: (payments) => payments.isEmpty
+                    ? const Card(
+                        child: Padding(
+                          padding: EdgeInsets.all(16),
+                          child: Text('No payments recorded yet.'),
+                        ),
+                      )
+                    : Column(
+                        children: payments
+                            .map(
+                              (payment) => Card(
+                                child: ListTile(
+                                  leading: const CircleAvatar(
+                                    child: Icon(Icons.receipt_long),
+                                  ),
+                                  title: Text(
+                                    '${payment.feeType ?? 'Fee'} · '
+                                    'MWK ${payment.amount.toStringAsFixed(2)}',
+                                  ),
+                                  subtitle: Text(
+                                    '${payment.paymentDate.toIso8601String().substring(0, 10)}'
+                                    ' · ${payment.method}'
+                                    '${payment.receiptNumber == null ? '' : ' · Receipt ${payment.receiptNumber}'}'
+                                    '${payment.referenceNumber == null ? '' : '\nReference ${payment.referenceNumber}'}'
+                                    '${payment.channelSummary == null ? '' : '\n${payment.channelSummary}'}',
+                                  ),
+                                  isThreeLine:
+                                      payment.referenceNumber != null ||
+                                      payment.channelSummary != null,
+                                ),
+                              ),
+                            )
+                            .toList(),
+                      ),
               ),
-            ),
-          ),
         ],
       ),
     );

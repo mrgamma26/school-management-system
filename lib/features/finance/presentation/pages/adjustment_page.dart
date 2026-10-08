@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../../../core/errors/app_exception.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/widgets/app_widgets.dart';
 import '../../data/finance_repository.dart';
 import '../../domain/models/financial_adjustment.dart';
 import '../../../authentication/presentation/providers/auth_provider.dart';
@@ -141,7 +141,6 @@ class _AdjustmentPageState extends ConsumerState<AdjustmentPage> {
       appBar: AppBar(
         title: Text('Adjustments\n${widget.studentName}'),
         actions: [
-          HomeButton(roleName: ref.watch(authProvider).user?.roleName ?? ''),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () =>
@@ -156,7 +155,7 @@ class _AdjustmentPageState extends ConsumerState<AdjustmentPage> {
       ),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
+        error: (e, _) => Center(child: Text(friendlyError(e))),
         data: (items) {
           if (items.isEmpty) {
             return const Center(child: Text('No adjustments recorded.'));

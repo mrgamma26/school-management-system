@@ -1,10 +1,10 @@
 // supabase/functions/reset-user-password/index.ts
 // Resets a user's password and sets mustchangepassword = true.
-// Only SYSTEM_ADMIN or REGISTRAR may call this function.
+// Only SUPER_USER or ADMINISTRATOR may call this function.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const ALLOWED_CALLER_ROLES = ["SUPER_USER", "SYSTEM_ADMIN", "ADMINISTRATOR", "REGISTRAR"];
+const ALLOWED_CALLER_ROLES = ["SUPER_USER", "ADMINISTRATOR"];
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",

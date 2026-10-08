@@ -46,8 +46,13 @@ dependencies:
   csv: ^5.1.1
   path_provider: ^2.1.1
 
+  # Form state persistence
+  shared_preferences: ^2.2.2
+
 dev_dependencies:
   flutter_test:
+    sdk: flutter
+  integration_test:
     sdk: flutter
 
   # The "flutter_lints" package below contains a set of recommended lints to

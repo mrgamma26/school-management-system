@@ -8,9 +8,9 @@ import 'package:go_router/go_router.dart';
 
 /// Returns the home route for a given role name.
 String homeRouteForRole(String roleName) {
-  switch (roleName.trim().toUpperCase()) {
+  final normalized = roleName.trim().toUpperCase();
+  switch (normalized == 'SYSTEM_ADMIN' ? 'SUPER_USER' : normalized) {
     case 'ADMINISTRATOR':
-    case 'REGISTRAR':
       return '/administrator/home';
     case 'TEACHER':
       return '/teacher/home';
@@ -21,7 +21,6 @@ String homeRouteForRole(String roleName) {
     case 'GUARDIAN':
       return '/guardian/home';
     case 'SUPER_USER':
-    case 'SYSTEM_ADMIN':
     default:
       return '/admin/home';
   }
@@ -68,10 +67,8 @@ class AppColors {
   static Color forRole(String role) {
     switch (role.toUpperCase()) {
       case 'SUPER_USER':
-      case 'SYSTEM_ADMIN':
         return roleSuperUser;
       case 'ADMINISTRATOR':
-      case 'REGISTRAR':
         return roleAdmin;
       case 'TEACHER':
         return roleTeacher;

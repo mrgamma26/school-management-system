@@ -1,5 +1,8 @@
-import 'dart:developer' as developer;
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../../core/database/supabase_client.dart';
+import '../../../../core/errors/app_exception.dart';
 import '../../data/repositories/auth_repository.dart';
 import '../../domain/models/app_user.dart';
 
@@ -38,7 +41,36 @@ class AuthNotifier extends Notifier<AuthState> {
   @override
   AuthState build() {
     _repo = ref.watch(authRepositoryProvider);
-    return const AuthState();
+    final hasSession = _repo.currentSession != null;
+
+    final authSubscription = supabase.auth.onAuthStateChange.listen((data) {
+      if (data.event == AuthChangeEvent.passwordRecovery ||
+          data.event == AuthChangeEvent.signedIn) {
+        unawaited(_restoreSession());
+      } else if (data.event == AuthChangeEvent.signedOut) {
+        state = const AuthState();
+      }
+    });
+    ref.onDispose(authSubscription.cancel);
+
+    if (hasSession) {
+      unawaited(_restoreSession());
+    }
+
+    return AuthState(isLoading: hasSession);
+  }
+
+  Future<void> _restoreSession() async {
+    try {
+      final user = await _repo.loadCurrentUser();
+      state = state.copyWith(isLoading: false, user: user, clearError: true);
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        clearUser: true,
+        errorMessage: friendlyError(e),
+      );
+    }
   }
 
   /// Signs the user in and populates [AuthState.user] on success.
@@ -48,9 +80,10 @@ class AuthNotifier extends Notifier<AuthState> {
     try {
       final user = await _repo.signIn(email: email, password: password);
       state = state.copyWith(isLoading: false, user: user);
+      ref.invalidate(permissionsProvider);
       return true;
     } catch (e) {
-      state = state.copyWith(isLoading: false, errorMessage: _friendly(e));
+      state = state.copyWith(isLoading: false, errorMessage: friendlyError(e));
       return false;
     }
   }
@@ -59,6 +92,7 @@ class AuthNotifier extends Notifier<AuthState> {
   Future<void> signOut() async {
     await _repo.signOut();
     state = const AuthState();
+    ref.invalidate(permissionsProvider);
   }
 
   /// Changes the password and clears the mustChangePassword flag locally.
@@ -82,37 +116,9 @@ class AuthNotifier extends Notifier<AuthState> {
       }
       return true;
     } catch (e) {
-      state = state.copyWith(isLoading: false, errorMessage: _friendly(e));
+      state = state.copyWith(isLoading: false, errorMessage: friendlyError(e));
       return false;
     }
-  }
-
-  String _friendly(Object error) {
-    final text = error.toString();
-
-    if (text.contains('Invalid login credentials')) {
-      return 'Incorrect email or password.';
-    }
-    if (text.contains('inactive')) return 'This account is inactive.';
-    if (text.contains('network') || text.contains('SocketException')) {
-      return 'Network error. Check your connection and try again.';
-    }
-    // systemuser row missing — auth worked but profile not found
-    if (text.contains('contains 0 rows') ||
-        text.contains('PGRST116') ||
-        text.contains('JSON object requested') ||
-        text.contains('single()')) {
-      return 'Account profile not found. Ask your system administrator to '
-          'create a system profile for your account.';
-    }
-
-    // In debug mode show the raw error so you can see exactly what failed.
-    assert(() {
-      developer.log('Login error', name: 'AuthNotifier', error: error);
-      return true;
-    }());
-
-    return 'Something went wrong. Please try again.';
   }
 }
 
@@ -120,3 +126,11 @@ class AuthNotifier extends Notifier<AuthState> {
 final authProvider = NotifierProvider<AuthNotifier, AuthState>(
   AuthNotifier.new,
 );
+
+/// Loads the permissions granted to the current user's role.
+final permissionsProvider = FutureProvider<Set<String>>((ref) async {
+  final user = ref.watch(authProvider).user;
+  if (user == null) return <String>{};
+
+  return AuthRepository().loadPermissionsForRole(user.roleId);
+});

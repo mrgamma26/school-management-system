@@ -9,6 +9,9 @@ class Payment {
   final String method;
   final String? referenceNumber;
   final String? receiptNumber;
+  final String? channelId;
+  final String? channelSummary;
+  final double processingFee;
 
   /// Optional joined data
   final String? studentName;
@@ -24,6 +27,9 @@ class Payment {
     required this.method,
     this.referenceNumber,
     this.receiptNumber,
+    this.channelId,
+    this.channelSummary,
+    this.processingFee = 0,
     this.studentName,
     this.feeType,
   });
@@ -31,6 +37,7 @@ class Payment {
   factory Payment.fromJson(Map<String, dynamic> j) {
     final student = j['student'] as Map<String, dynamic>?;
     final fee = j['feestructure'] as Map<String, dynamic>?;
+    final channel = j['paymentchannel'] as Map<String, dynamic>?;
     return Payment(
       paymentId: j['paymentid'] as String,
       studentId: j['studentid'] as String,
@@ -41,6 +48,11 @@ class Payment {
       method: j['method'].toString(),
       referenceNumber: j['referencenumber'] as String?,
       receiptNumber: j['receiptnumber'] as String?,
+      channelId: j['channelid'] as String?,
+      channelSummary: channel == null
+          ? null
+          : '${channel['displayname']} · ${channel['providername']} · ${channel['maskedidentifier']}',
+      processingFee: (j['processingfee'] as num?)?.toDouble() ?? 0,
       studentName: student != null
           ? '${student['firstname']} ${student['lastname']}'
           : null,

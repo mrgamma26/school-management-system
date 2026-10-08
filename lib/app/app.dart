@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../theme/app_theme.dart';
+import '../core/constants/app_strings.dart';
 import 'app_router.dart';
 
 /// Root application widget.
@@ -13,10 +14,10 @@ class SchoolApp extends ConsumerWidget {
 
     return MaterialApp.router(
       debugShowCheckedModeBanner: false,
-      title: 'Mai Halima School',
+      title: AppStrings.appName,
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
-      themeMode: ThemeMode.light, // force light; add toggle later if needed
+      themeMode: ThemeMode.light,
       routerConfig: router,
     );
   }

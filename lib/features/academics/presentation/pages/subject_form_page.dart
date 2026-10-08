@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../data/academic_repository.dart';
 import '../../domain/models/subject.dart';
-import '../../../authentication/presentation/providers/auth_provider.dart';
-import '../../../../core/widgets/app_widgets.dart';
 
 /// Create or edit a subject.
 class SubjectFormPage extends ConsumerStatefulWidget {
@@ -64,7 +63,7 @@ class _SubjectFormPageState extends ConsumerState<SubjectFormPage> {
         );
       }
 
-      if (mounted) Navigator.pop(context, true);
+      if (mounted) context.go('/academics/subjects');
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
@@ -74,12 +73,8 @@ class _SubjectFormPageState extends ConsumerState<SubjectFormPage> {
 
   @override
   Widget build(BuildContext context) {
-    final role = ref.watch(authProvider).user?.roleName ?? '';
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_isEdit ? 'Edit Subject' : 'Create Subject'),
-        actions: [HomeButton(roleName: role)],
-      ),
+      appBar: AppBar(title: Text(_isEdit ? 'Edit Subject' : 'Create Subject')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Form(

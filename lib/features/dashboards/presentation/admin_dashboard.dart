@@ -7,8 +7,28 @@ import '../../../widgets/notched_card.dart';
 import '../../../widgets/stat_badge_card.dart';
 import '../../../widgets/section_header.dart';
 import '../../../widgets/app_card.dart';
-import '../../../core/navigation/nav_items.dart';
 import '../../authentication/presentation/providers/auth_provider.dart';
+import '../../../core/database/supabase_client.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+const _overviewColumns = <String, String>{
+  'student': 'studentid',
+  'staff': 'staffid',
+  'guardian': 'guardianid',
+  'systemuser': 'userid',
+};
+
+final adminOverviewCountProvider = FutureProvider.autoDispose
+    .family<int, String>((ref, table) async {
+      final column = _overviewColumns[table];
+      if (column == null) throw ArgumentError.value(table, 'table');
+      final result = await supabase
+          .from(table)
+          .select(column)
+          .limit(0)
+          .count(CountOption.exact);
+      return result.count;
+    });
 
 class AdminDashboard extends ConsumerWidget {
   const AdminDashboard({super.key});
@@ -18,120 +38,129 @@ class AdminDashboard extends ConsumerWidget {
     final user = ref.watch(authProvider).user;
 
     return AppShell(
-      navItems: getNavItemsForRole(user?.roleName ?? 'GUEST'),
       homeRoute: '/admin/home',
       body: _Body(username: user?.username ?? ''),
     );
   }
 }
 
-class _Body extends StatelessWidget {
+class _Body extends ConsumerWidget {
   final String username;
   const _Body({required this.username});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(Sp.xl),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Welcome hero
-          NotchedCard(
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Hello, ${_first(username)}',
-                        style: const TextStyle(
-                          fontFamily: AppText.fontHeading,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                        ),
+      padding: const EdgeInsets.fromLTRB(Sp.lg, Sp.md, Sp.lg, Sp.xl),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1120),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Welcome hero
+              NotchedCard(
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Hello, ${_first(username)}',
+                            style: const TextStyle(
+                              fontFamily: AppText.fontHeading,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: Sp.xs),
+                          Text(
+                            'Welcome to the System Admin dashboard.',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.white.withValues(alpha: 0.8),
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: Sp.xs),
-                      Text(
-                        'Welcome to the System Admin dashboard.',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.white.withValues(alpha: 0.8),
-                        ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.all(Sp.lg),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        borderRadius: Radii.lgBr,
                       ),
-                    ],
-                  ),
+                      child: const Icon(
+                        Icons.admin_panel_settings,
+                        color: Colors.white,
+                        size: 36,
+                      ),
+                    ),
+                  ],
                 ),
-                Container(
-                  padding: const EdgeInsets.all(Sp.lg),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.15),
-                    borderRadius: Radii.lgBr,
-                  ),
-                  child: const Icon(
-                    Icons.admin_panel_settings,
-                    color: Colors.white,
-                    size: 36,
-                  ),
-                ),
-              ],
-            ),
+              ),
+              const SizedBox(height: Sp.xl),
+
+              // Stat cards
+              SectionHeader(
+                'Overview',
+                icon: Icons.bar_chart,
+                actionLabel: 'Refresh',
+                onAction: () => ref.invalidate(adminOverviewCountProvider),
+              ),
+              _statGrid(context, ref),
+              const SizedBox(height: Sp.lg),
+
+              // Quick actions
+              SectionHeader('Quick Actions', icon: Icons.flash_on),
+              _actionGrid(context),
+              const SizedBox(height: Sp.lg),
+
+              // System
+              SectionHeader('System', icon: Icons.settings),
+              _systemGrid(context),
+            ],
           ),
-          const SizedBox(height: Sp.xl),
-
-          // Stat cards
-          SectionHeader('Overview', icon: Icons.bar_chart),
-          _StatGrid(context),
-          const SizedBox(height: Sp.xs),
-
-          // Quick actions
-          SectionHeader('Quick Actions', icon: Icons.flash_on),
-          _ActionGrid(context),
-          const SizedBox(height: Sp.xs),
-
-          // System
-          SectionHeader('System', icon: Icons.settings),
-          _SystemGrid(context),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _StatGrid(BuildContext ctx) {
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: Sp.md,
-      crossAxisSpacing: Sp.md,
-      childAspectRatio: 1.5,
+  Widget _statGrid(BuildContext ctx, WidgetRef ref) {
+    return _dashboardGrid(
+      maxColumns: 4,
+      itemHeight: 150,
       children: [
-        StatBadgeCard(
+        _countCard(
+          ref: ref,
+          table: 'student',
           label: 'Students',
-          value: '-',
           icon: Icons.school,
           iconColor: AppColors.statBlue,
           onTap: () => ctx.go('/students'),
         ),
-        StatBadgeCard(
+        _countCard(
+          ref: ref,
+          table: 'staff',
           label: 'Staff',
-          value: '-',
           icon: Icons.badge,
           iconColor: AppColors.statOrange,
           onTap: () => ctx.go('/users/staff'),
         ),
-        StatBadgeCard(
+        _countCard(
+          ref: ref,
+          table: 'guardian',
           label: 'Guardians',
-          value: '-',
           icon: Icons.family_restroom,
           iconColor: AppColors.statGreen,
           onTap: () => ctx.go('/users/guardians'),
         ),
-        StatBadgeCard(
+        _countCard(
+          ref: ref,
+          table: 'systemuser',
           label: 'System Users',
-          value: '-',
           icon: Icons.manage_accounts,
           iconColor: AppColors.statRed,
           onTap: () => ctx.go('/admin/users'),
@@ -140,17 +169,40 @@ class _Body extends StatelessWidget {
     );
   }
 
-  Widget _ActionGrid(BuildContext ctx) {
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: Sp.md,
-      crossAxisSpacing: Sp.md,
-      childAspectRatio: 2.2,
+  Widget _countCard({
+    required WidgetRef ref,
+    required String table,
+    required String label,
+    required IconData icon,
+    required Color iconColor,
+    required VoidCallback onTap,
+  }) {
+    final count = ref.watch(adminOverviewCountProvider(table));
+    return Tooltip(
+      message: count.hasError
+          ? 'Count unavailable. Refresh to try again.'
+          : label,
+      child: StatBadgeCard(
+        label: label,
+        value: count.when(
+          data: (value) => '$value',
+          loading: () => '…',
+          error: (_, _) => '!',
+        ),
+        icon: icon,
+        iconColor: iconColor,
+        onTap: onTap,
+      ),
+    );
+  }
+
+  Widget _actionGrid(BuildContext ctx) {
+    return _dashboardGrid(
+      maxColumns: 3,
+      itemHeight: 76,
       children: [
         _Tile(
-          'Enrol Student',
+          'Add Student',
           Icons.person_add,
           AppColors.statBlue,
           () => ctx.go('/students/new'),
@@ -165,26 +217,16 @@ class _Body extends StatelessWidget {
           'Add Academic Year',
           Icons.calendar_today,
           AppColors.statGreen,
-          () => ctx.go('/academics/years'),
-        ),
-        _Tile(
-          'Fee Structures',
-          Icons.price_change,
-          AppColors.statRed,
-          () => ctx.go('/finance/fees'),
+          () => ctx.push('/academics/years/new'),
         ),
       ],
     );
   }
 
-  Widget _SystemGrid(BuildContext ctx) {
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: Sp.md,
-      crossAxisSpacing: Sp.md,
-      childAspectRatio: 2.2,
+  Widget _systemGrid(BuildContext ctx) {
+    return _dashboardGrid(
+      maxColumns: 3,
+      itemHeight: 76,
       children: [
         _Tile(
           'Audit Log',
@@ -199,10 +241,10 @@ class _Body extends StatelessWidget {
           () => ctx.go('/notifications'),
         ),
         _Tile(
-          'Assignments',
-          Icons.assignment_ind,
+          'Payment Configuration',
+          Icons.tune,
           AppColors.statGreen,
-          () => ctx.go('/academics/assignments'),
+          () => ctx.go('/finance/payment-configuration'),
         ),
         _Tile(
           'Reports',
@@ -211,6 +253,35 @@ class _Body extends StatelessWidget {
           () => ctx.go('/reports'),
         ),
       ],
+    );
+  }
+
+  Widget _dashboardGrid({
+    required int maxColumns,
+    required double itemHeight,
+    required List<Widget> children,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final columns = width >= 900
+            ? maxColumns
+            : width >= 560 || (maxColumns == 4 && width >= 360)
+            ? 2
+            : 1;
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: children.length,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            mainAxisExtent: itemHeight,
+            mainAxisSpacing: Sp.md,
+            crossAxisSpacing: Sp.md,
+          ),
+          itemBuilder: (context, index) => children[index],
+        );
+      },
     );
   }
 
@@ -258,6 +329,12 @@ class _Tile extends StatelessWidget {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
+          ),
+          const SizedBox(width: Sp.xs),
+          const Icon(
+            Icons.arrow_forward_ios_rounded,
+            size: 14,
+            color: AppColors.textSecondary,
           ),
         ],
       ),

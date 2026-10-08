@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/widgets/app_widgets.dart';
-import '../../../../core/database/supabase_client.dart';
-import '../../../authentication/presentation/providers/auth_provider.dart';
+import '../../../../core/data/audit_repository.dart';
+import '../../../../widgets/skeleton_loader.dart';
 
 // ── Providers ─────────────────────────────────────────────────────────────────
 
@@ -32,6 +31,9 @@ class _AuditFilters {
 class _AuditFiltersNotifier extends Notifier<_AuditFilters> {
   @override
   _AuditFilters build() => const _AuditFilters();
+
+  void update(_AuditFilters filters) => state = filters;
+  void reset() => state = const _AuditFilters();
 }
 
 final _auditFiltersProvider =
@@ -43,42 +45,19 @@ final _auditLogProvider = FutureProvider<List<Map<String, dynamic>>>((
   ref,
 ) async {
   final filters = ref.watch(_auditFiltersProvider);
+  final repo = AuditRepository();
 
-  // Start with filter builder — apply WHERE clauses BEFORE order/limit
-  var q = supabase
-      .from('auditlog')
-      .select(
-        'auditid, action, tablename, recordid, actorrole, reason, '
-        'previousvalue, newvalue, createdat, '
-        'systemuser(username)',
-      );
-
-  if (filters.action != null && filters.action!.isNotEmpty) {
-    q = q.ilike('action', '%${filters.action}%');
-  }
-  if (filters.table != null && filters.table!.isNotEmpty) {
-    q = q.eq('tablename', filters.table!);
-  }
-  if (filters.from != null) {
-    q = q.gte('createdat', filters.from!.toIso8601String());
-  }
-  if (filters.to != null) {
-    q = q.lte('createdat', filters.to!.toIso8601String());
-  }
-
-  // Apply order + limit last
-  final rows = await q.order('createdat', ascending: false).limit(200);
-
-  return List<Map<String, dynamic>>.from(rows as List);
+  return repo.listAuditLogs(
+    action: filters.action,
+    tableName: filters.table,
+    fromDate: filters.from,
+    toDate: filters.to,
+    limit: kAuditLogPageSize,
+  );
 });
 
-// Distinct table names for the filter dropdown
 final _auditTablesProvider = FutureProvider<List<String>>((ref) async {
-  final rows = await supabase.from('auditlog').select('tablename');
-  final names =
-      (rows as List).map((r) => r['tablename'] as String).toSet().toList()
-        ..sort();
-  return names;
+  return AuditRepository().listTablesWithAuditEntries();
 });
 
 // ── Page ──────────────────────────────────────────────────────────────────────
@@ -112,7 +91,6 @@ class _AuditLogPageState extends ConsumerState<AuditLogPage> {
       appBar: AppBar(
         title: const Text('Audit Log'),
         actions: [
-          HomeButton(roleName: ref.watch(authProvider).user?.roleName ?? ''),
           IconButton(
             icon: Icon(
               _showFilters ? Icons.filter_alt : Icons.filter_alt_outlined,
@@ -146,9 +124,9 @@ class _AuditLogPageState extends ConsumerState<AuditLogPage> {
                         isDense: true,
                         prefixIcon: Icon(Icons.search),
                       ),
-                      onSubmitted: (v) =>
-                          ref.read(_auditFiltersProvider.notifier).state =
-                              filters.copyWith(action: v.trim()),
+                      onSubmitted: (v) => ref
+                          .read(_auditFiltersProvider.notifier)
+                          .update(filters.copyWith(action: v.trim())),
                     ),
                     const SizedBox(height: 8),
                     // Table filter
@@ -171,9 +149,9 @@ class _AuditLogPageState extends ConsumerState<AuditLogPage> {
                             (t) => DropdownMenuItem(value: t, child: Text(t)),
                           ),
                         ],
-                        onChanged: (v) =>
-                            ref.read(_auditFiltersProvider.notifier).state =
-                                filters.copyWith(table: v),
+                        onChanged: (v) => ref
+                            .read(_auditFiltersProvider.notifier)
+                            .update(filters.copyWith(table: v)),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -193,8 +171,9 @@ class _AuditLogPageState extends ConsumerState<AuditLogPage> {
                                 lastDate: DateTime.now(),
                               );
                               if (d != null) {
-                                ref.read(_auditFiltersProvider.notifier).state =
-                                    filters.copyWith(from: d);
+                                ref
+                                    .read(_auditFiltersProvider.notifier)
+                                    .update(filters.copyWith(from: d));
                               }
                             },
                           ),
@@ -213,8 +192,9 @@ class _AuditLogPageState extends ConsumerState<AuditLogPage> {
                                 lastDate: DateTime.now(),
                               );
                               if (d != null) {
-                                ref.read(_auditFiltersProvider.notifier).state =
-                                    filters.copyWith(to: d);
+                                ref
+                                    .read(_auditFiltersProvider.notifier)
+                                    .update(filters.copyWith(to: d));
                               }
                             },
                           ),
@@ -224,8 +204,7 @@ class _AuditLogPageState extends ConsumerState<AuditLogPage> {
                           tooltip: 'Clear filters',
                           onPressed: () {
                             _actionCtrl.clear();
-                            ref.read(_auditFiltersProvider.notifier).state =
-                                const _AuditFilters();
+                            ref.read(_auditFiltersProvider.notifier).reset();
                           },
                         ),
                       ],
@@ -234,11 +213,10 @@ class _AuditLogPageState extends ConsumerState<AuditLogPage> {
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton.icon(
-                        onPressed: () =>
-                            ref
-                                .read(_auditFiltersProvider.notifier)
-                                .state = filters.copyWith(
-                              action: _actionCtrl.text.trim(),
+                        onPressed: () => ref
+                            .read(_auditFiltersProvider.notifier)
+                            .update(
+                              filters.copyWith(action: _actionCtrl.text.trim()),
                             ),
                         icon: const Icon(Icons.search),
                         label: const Text('Apply Filters'),
@@ -262,30 +240,30 @@ class _AuditLogPageState extends ConsumerState<AuditLogPage> {
                   if (filters.action != null)
                     _FilterChip(
                       label: 'action: ${filters.action}',
-                      onRemove: () =>
-                          ref.read(_auditFiltersProvider.notifier).state =
-                              filters.copyWith(action: null),
+                      onRemove: () => ref
+                          .read(_auditFiltersProvider.notifier)
+                          .update(filters.copyWith(action: null)),
                     ),
                   if (filters.table != null)
                     _FilterChip(
                       label: 'table: ${filters.table}',
-                      onRemove: () =>
-                          ref.read(_auditFiltersProvider.notifier).state =
-                              filters.copyWith(table: null),
+                      onRemove: () => ref
+                          .read(_auditFiltersProvider.notifier)
+                          .update(filters.copyWith(table: null)),
                     ),
                   if (filters.from != null)
                     _FilterChip(
                       label: 'from: ${_fmt(filters.from!)}',
-                      onRemove: () =>
-                          ref.read(_auditFiltersProvider.notifier).state =
-                              filters.copyWith(from: null),
+                      onRemove: () => ref
+                          .read(_auditFiltersProvider.notifier)
+                          .update(filters.copyWith(from: null)),
                     ),
                   if (filters.to != null)
                     _FilterChip(
                       label: 'to: ${_fmt(filters.to!)}',
-                      onRemove: () =>
-                          ref.read(_auditFiltersProvider.notifier).state =
-                              filters.copyWith(to: null),
+                      onRemove: () => ref
+                          .read(_auditFiltersProvider.notifier)
+                          .update(filters.copyWith(to: null)),
                     ),
                 ],
               ),
@@ -294,7 +272,8 @@ class _AuditLogPageState extends ConsumerState<AuditLogPage> {
           // ── Log list ─────────────────────────────────────────────────────
           Expanded(
             child: logAsync.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
+              loading: () =>
+                  const SkeletonListLoader(itemCount: 6, itemHeight: 88),
               error: (e, _) => Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,

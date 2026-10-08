@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/widgets/app_widgets.dart';
 import '../../../widgets/app_shell.dart';
-import '../../../core/navigation/nav_items.dart';
 import '../../authentication/presentation/providers/auth_provider.dart';
 import 'dashboard_scaffold.dart';
 
@@ -12,9 +11,8 @@ class TeacherDashboard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final user = ref.watch(authProvider).user;
+    ref.watch(authProvider);
     return AppShell(
-      navItems: getNavItemsForRole(user?.roleName ?? 'GUEST'),
       homeRoute: '/teacher/home',
       body: DashboardBody(
         subtitle:
@@ -23,17 +21,17 @@ class TeacherDashboard extends ConsumerWidget {
         roleColor: AppColors.roleTeacher,
         children: [
           DashGrid(
-            sectionTitle: 'My Classes',
+            sectionTitle: 'Classes You Teach',
             sectionIcon: Icons.class_,
             tiles: [
               _T(
-                'My Assignments',
+                'Classes You Teach',
                 Icons.assignment_ind,
                 AppColors.roleTeacher,
                 () => context.go('/academics/assignments'),
               ),
               _T(
-                'Students',
+                'My Students',
                 Icons.groups,
                 AppColors.roleAdmin,
                 () => context.go('/students'),
@@ -45,15 +43,15 @@ class TeacherDashboard extends ConsumerWidget {
             sectionIcon: Icons.grade,
             tiles: [
               _T(
-                'Assessments',
-                Icons.quiz,
-                AppColors.primary,
+                'Add Assessment',
+                Icons.add_task,
+                AppColors.roleTeacher,
                 () => context.go('/assessments'),
               ),
               _T(
-                'Enter Grades',
-                Icons.edit_note,
-                AppColors.success,
+                'Assessments & Grades',
+                Icons.quiz,
+                AppColors.primary,
                 () => context.go('/assessments'),
               ),
             ],
@@ -63,7 +61,7 @@ class TeacherDashboard extends ConsumerWidget {
             sectionIcon: Icons.campaign,
             tiles: [
               _T(
-                'Student Comments',
+                'Teacher Comments',
                 Icons.comment,
                 AppColors.roleTeacher,
                 () => context.go('/teacher/comments'),
@@ -74,23 +72,11 @@ class TeacherDashboard extends ConsumerWidget {
                 AppColors.roleHeadTeacher,
                 () => context.go('/notifications'),
               ),
-            ],
-          ),
-          DashGrid(
-            sectionTitle: 'More',
-            sectionIcon: Icons.more_horiz,
-            tiles: [
               _T(
                 'Calendar',
                 Icons.calendar_month,
                 AppColors.roleAccountant,
                 () => context.go('/calendar'),
-              ),
-              _T(
-                'Reports',
-                Icons.analytics,
-                AppColors.roleAdmin,
-                () => context.go('/reports'),
               ),
             ],
           ),

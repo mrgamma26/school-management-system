@@ -1,26 +1,37 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../../../core/widgets/app_widgets.dart';
+import '../../../../widgets/can.dart';
+import '../../../../core/auth/permission_helper.dart';
 import '../../data/assessment_repository.dart';
 import '../../../../core/database/supabase_client.dart';
 import '../../../authentication/presentation/providers/auth_provider.dart';
 
 // ── Providers ─────────────────────────────────────────────────────────────────
 
-/// Loads all classsubject rows for a staff member in a given academic year,
-/// joined with class and subject names.
-final _myAssignmentsProvider =
-    FutureProvider.family<
-      List<Map<String, dynamic>>,
-      ({String staffId, String yearId})
-    >((ref, args) async {
+/// Loads all teacher assignments whose class and academic-period forms match.
+/// Historical terms remain available for authorised corrections and reviews.
+final _formMatchedAssignmentsProvider =
+    FutureProvider.family<List<Map<String, dynamic>>, String>((
+      ref,
+      staffId,
+    ) async {
       final rows = await supabase
           .from('classsubject')
-          .select('classsubjectid, class(classroomname), subject(subjectname)')
-          .eq('staffid', args.staffId)
-          .eq('academicyearid', args.yearId);
-      return List<Map<String, dynamic>>.from(rows as List);
+          .select(
+            'classsubjectid, class(classroomname, form), subject(subjectname), '
+            'academicyear(academicyearid, academicyear, term, form, startdate, enddate)',
+          )
+          .eq('staffid', staffId);
+      return List<Map<String, dynamic>>.from(rows as List).where((row) {
+        final period = row['academicyear'] as Map?;
+        final classroom = row['class'] as Map?;
+        if (period == null || classroom == null) return false;
+        final periodForm = period['form']?.toString();
+        final classForm = classroom['form']?.toString();
+        if (periodForm == null || periodForm != classForm) return false;
+        return true;
+      }).toList();
     });
 
 final _staffIdProvider = FutureProvider<String>((ref) async {
@@ -33,12 +44,19 @@ final _staffIdProvider = FutureProvider<String>((ref) async {
   return row['staffid'] as String;
 });
 
-final _yearsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
-  final rows = await supabase
+/// Used only for the page-level empty state. Assignment visibility itself is
+/// resolved per form by [_formMatchedAssignmentsProvider].
+final _activeYearProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
+  final today = DateTime.now().toIso8601String().substring(0, 10);
+  final row = await supabase
       .from('academicyear')
-      .select('academicyearid, academicyear, term')
-      .order('academicyear', ascending: false);
-  return List<Map<String, dynamic>>.from(rows as List);
+      .select('academicyearid')
+      .not('form', 'is', null)
+      .lte('startdate', today)
+      .gte('enddate', today)
+      .limit(1)
+      .maybeSingle();
+  return row == null ? null : Map<String, dynamic>.from(row);
 });
 
 final _assessmentsForCsProvider =
@@ -58,80 +76,86 @@ class AssessmentsPage extends ConsumerStatefulWidget {
 }
 
 class _AssessmentsPageState extends ConsumerState<AssessmentsPage> {
+  // Kept only for the hidden legacy picker below while existing widget state is
+  // migrated. Teachers use the active year automatically.
   String? _selectedYearId;
-  String? _selectedYearLabel;
-
-  bool get _canManage {
-    final r = ref.read(authProvider).user?.roleName.toUpperCase() ?? '';
-    return r == 'TEACHER' || r == 'SYSTEM_ADMIN' || r == 'SUPER_USER';
-  }
 
   @override
   Widget build(BuildContext context) {
     final staffAsync = ref.watch(_staffIdProvider);
-    final yearsAsync = ref.watch(_yearsProvider);
-    final role = ref.watch(authProvider).user?.roleName ?? '';
+    final activeYearAsync = ref.watch(_activeYearProvider);
+    final permHelper = ref.watch(permissionHelperProvider);
+    final canManageAssessments = permHelper.maybeWhen(
+      data: (perm) => perm?.canManageAssessments ?? false,
+      orElse: () => false,
+    );
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Assessments'),
-        actions: [HomeButton(roleName: role)],
-      ),
+      appBar: AppBar(title: const Text('Assessments & Grades')),
       body: staffAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) =>
             Center(child: Text('Could not load your staff profile: $e')),
-        data: (staffId) => yearsAsync.when(
+        data: (staffId) => activeYearAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, _) =>
-              Center(child: Text('Could not load academic years: $e')),
-          data: (years) => Column(
-            children: [
-              // ── Year picker ────────────────────────────────────────────────
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: DropdownButtonFormField<String>(
-                  initialValue: _selectedYearId,
-                  decoration: const InputDecoration(
-                    labelText: 'Academic Year',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.calendar_today),
+              Center(child: Text('Could not load the active year: $e')),
+          data: (year) {
+            if (year == null) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text(
+                    'There is no active academic year. Ask an administrator to set its dates.',
+                    textAlign: TextAlign.center,
                   ),
-                  hint: const Text('Select academic year'),
-                  items: years.map((y) {
-                    final id = y['academicyearid'] as String;
-                    final label = '${y['academicyear']} — ${y['term']}';
-                    return DropdownMenuItem(value: id, child: Text(label));
-                  }).toList(),
-                  onChanged: (v) {
-                    final y = years.firstWhere((y) => y['academicyearid'] == v);
-                    setState(() {
-                      _selectedYearId = v;
-                      _selectedYearLabel =
-                          '${y['academicyear']} — ${y['term']}';
-                    });
-                  },
                 ),
-              ),
-
-              // ── Assignment list ────────────────────────────────────────────
-              Expanded(
-                child: _selectedYearId == null
-                    ? const Center(
-                        child: Text(
-                          'Select an academic year to view your assignments',
-                          style: TextStyle(color: Colors.grey),
-                        ),
-                      )
-                    : _AssignmentList(
-                        staffId: staffId,
-                        yearId: _selectedYearId!,
-                        yearLabel: _selectedYearLabel!,
-                        canManage: _canManage,
+              );
+            }
+            final years = [year];
+            final yearId = year['academicyearid'] as String;
+            return Column(
+              children: [
+                // ── Year picker ────────────────────────────────────────────────
+                if (_selectedYearId != null)
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _selectedYearId,
+                      decoration: const InputDecoration(
+                        labelText: 'Academic Year',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.calendar_today),
                       ),
-              ),
-            ],
-          ),
+                      hint: const Text('Select academic year'),
+                      items: years.map((y) {
+                        final id = y['academicyearid'] as String;
+                        final label = '${y['academicyear']} — ${y['term']}';
+                        return DropdownMenuItem(value: id, child: Text(label));
+                      }).toList(),
+                      onChanged: (v) {
+                        setState(() {
+                          _selectedYearId = v;
+                        });
+                      },
+                    ),
+                  ),
+
+                // ── Assignment list ────────────────────────────────────────────
+                Expanded(
+                  child: _AssignmentList(
+                    staffId: staffId,
+                    yearId: yearId,
+                    yearLabel: 'Current year',
+                    canManage:
+                        canManageAssessments ||
+                        ref.read(authProvider).user?.roleName.toUpperCase() ==
+                            'TEACHER',
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -155,8 +179,7 @@ class _AssignmentList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final args = (staffId: staffId, yearId: yearId);
-    final async = ref.watch(_myAssignmentsProvider(args));
+    final async = ref.watch(_formMatchedAssignmentsProvider(staffId));
 
     return async.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -165,7 +188,7 @@ class _AssignmentList extends ConsumerWidget {
         if (assignments.isEmpty) {
           return const Center(
             child: Text(
-              'No class assignments found for this year.',
+              'No class assignments match a form-specific academic period.',
               style: TextStyle(color: Colors.grey),
             ),
           );
@@ -178,6 +201,10 @@ class _AssignmentList extends ConsumerWidget {
             final csId = a['classsubjectid'] as String;
             final className = (a['class'] as Map?)?['classroomname'] ?? '—';
             final subName = (a['subject'] as Map?)?['subjectname'] ?? '—';
+            final period = a['academicyear'] as Map?;
+            final periodLabel = period == null
+                ? 'Academic period'
+                : '${period['academicyear']}/${(period['academicyear'] as int) + 1} • ${period['term'].toString().replaceAll('_', ' ')}';
 
             return Card(
               child: ExpansionTile(
@@ -189,13 +216,20 @@ class _AssignmentList extends ConsumerWidget {
                   subName,
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
-                subtitle: Text('Class: $className'),
+                subtitle: Text('Class: $className • $periodLabel'),
                 children: [
                   _AssessmentSubList(
                     classSubjectId: csId,
                     className: className,
                     subjectName: subName,
                     canManage: canManage,
+                    canEnterGrades: ref
+                        .watch(permissionHelperProvider)
+                        .maybeWhen(
+                          data: (permissions) =>
+                              permissions?.canEnterGrades ?? false,
+                          orElse: () => false,
+                        ),
                   ),
                 ],
               ),
@@ -214,12 +248,14 @@ class _AssessmentSubList extends ConsumerWidget {
   final String className;
   final String subjectName;
   final bool canManage;
+  final bool canEnterGrades;
 
   const _AssessmentSubList({
     required this.classSubjectId,
     required this.className,
     required this.subjectName,
     required this.canManage,
+    required this.canEnterGrades,
   });
 
   @override
@@ -242,7 +278,7 @@ class _AssessmentSubList extends ConsumerWidget {
               leading: Icon(_typeIcon(a.type), color: _typeColor(a.type)),
               title: Text(a.name),
               subtitle: Text('${a.type} • Max: ${a.maxScore}'),
-              trailing: canManage
+              trailing: canEnterGrades
                   ? IconButton(
                       icon: const Icon(Icons.grade, color: Colors.orange),
                       tooltip: 'Enter Grades',
@@ -259,12 +295,18 @@ class _AssessmentSubList extends ConsumerWidget {
             ),
           ),
           if (canManage)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: OutlinedButton.icon(
-                onPressed: () => _showAddDialog(context, ref),
-                icon: const Icon(Icons.add),
-                label: const Text('Add Assessment'),
+            Can(
+              permission: 'assessments:write',
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                child: OutlinedButton.icon(
+                  onPressed: () => _showAddDialog(context, ref),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add Assessment'),
+                ),
               ),
             ),
           if (assessments.isEmpty && !canManage)
@@ -284,6 +326,9 @@ class _AssessmentSubList extends ConsumerWidget {
     final nameCtrl = TextEditingController();
     final scoreCtrl = TextEditingController();
     String selectedType = 'TEST';
+    bool saving = false;
+    String? error;
+    Assessment? createdAssessment;
     const types = [
       'QUIZ',
       'TEST',
@@ -291,6 +336,7 @@ class _AssessmentSubList extends ConsumerWidget {
       'ASSIGNMENT',
       'PROJECT',
       'PRACTICAL',
+      'END_OF_TERM',
     ];
 
     await showDialog(
@@ -301,6 +347,10 @@ class _AssessmentSubList extends ConsumerWidget {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (error != null) ...[
+                Text(error!, style: const TextStyle(color: Colors.red)),
+                const SizedBox(height: 12),
+              ],
               TextField(
                 controller: nameCtrl,
                 decoration: const InputDecoration(
@@ -312,7 +362,12 @@ class _AssessmentSubList extends ConsumerWidget {
                 initialValue: selectedType,
                 decoration: const InputDecoration(labelText: 'Type'),
                 items: types
-                    .map((t) => DropdownMenuItem(value: t, child: Text(t)))
+                    .map(
+                      (t) => DropdownMenuItem(
+                        value: t,
+                        child: Text(t.replaceAll('_', ' ')),
+                      ),
+                    )
                     .toList(),
                 onChanged: (v) => setSt(() => selectedType = v!),
               ),
@@ -326,24 +381,48 @@ class _AssessmentSubList extends ConsumerWidget {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(ctx),
+              onPressed: saving ? null : () => Navigator.pop(ctx),
               child: const Text('Cancel'),
             ),
             FilledButton(
-              onPressed: () async {
-                final name = nameCtrl.text.trim();
-                final score = double.tryParse(scoreCtrl.text.trim()) ?? 0;
-                if (name.isEmpty || score <= 0) return;
-                await AssessmentRepository().createAssessment(
-                  classSubjectId: classSubjectId,
-                  name: name,
-                  type: selectedType,
-                  maxScore: score,
-                );
-                ref.invalidate(_assessmentsForCsProvider(classSubjectId));
-                if (ctx.mounted) Navigator.pop(ctx);
-              },
-              child: const Text('Add'),
+              onPressed: saving
+                  ? null
+                  : () async {
+                      final name = nameCtrl.text.trim();
+                      final score = double.tryParse(scoreCtrl.text.trim()) ?? 0;
+                      if (name.isEmpty || score <= 0) {
+                        setSt(
+                          () => error =
+                              'Enter an assessment name and maximum score.',
+                        );
+                        return;
+                      }
+                      setSt(() {
+                        saving = true;
+                        error = null;
+                      });
+                      try {
+                        createdAssessment = await AssessmentRepository()
+                            .createAssessment(
+                              classSubjectId: classSubjectId,
+                              name: name,
+                              type: selectedType,
+                              maxScore: score,
+                            );
+                        ref.invalidate(
+                          _assessmentsForCsProvider(classSubjectId),
+                        );
+                        if (ctx.mounted) Navigator.pop(ctx);
+                      } catch (_) {
+                        setSt(
+                          () => error =
+                              'Could not create the assessment. Please try again.',
+                        );
+                      } finally {
+                        if (ctx.mounted) setSt(() => saving = false);
+                      }
+                    },
+              child: Text(saving ? 'Creating…' : 'Add'),
             ),
           ],
         ),
@@ -351,6 +430,16 @@ class _AssessmentSubList extends ConsumerWidget {
     );
     nameCtrl.dispose();
     scoreCtrl.dispose();
+    if (createdAssessment != null && context.mounted) {
+      context.go(
+        '/assessments/${createdAssessment!.id}/grades',
+        extra: {
+          'maxScore': createdAssessment!.maxScore,
+          'assessmentName': createdAssessment!.name,
+          'classSubjectId': classSubjectId,
+        },
+      );
+    }
   }
 
   IconData _typeIcon(String type) => switch (type) {
@@ -359,6 +448,7 @@ class _AssessmentSubList extends ConsumerWidget {
     'ASSIGNMENT' => Icons.assignment,
     'PROJECT' => Icons.science,
     'PRACTICAL' => Icons.biotech,
+    'END_OF_TERM' => Icons.event_available,
     _ => Icons.quiz,
   };
 
@@ -368,6 +458,7 @@ class _AssessmentSubList extends ConsumerWidget {
     'ASSIGNMENT' => Colors.blue,
     'PROJECT' => Colors.purple,
     'PRACTICAL' => Colors.teal,
+    'END_OF_TERM' => Colors.indigo,
     _ => Colors.grey,
   };
 }

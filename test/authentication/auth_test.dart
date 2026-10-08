@@ -51,7 +51,7 @@ void main() {
         'roleid': 'role-uuid-001',
         'mustchangepassword': true,
         'isactive': true,
-        'role': {'rolename': 'REGISTRAR'},
+        'role': {'rolename': 'ADMINISTRATOR'},
       };
       final user = AppUser.fromJson(json);
       expect(user.mustChangePassword, isTrue);

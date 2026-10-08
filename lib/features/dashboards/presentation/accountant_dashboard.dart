@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/widgets/app_widgets.dart';
 import '../../../widgets/app_shell.dart';
-import '../../../core/navigation/nav_items.dart';
 import '../../authentication/presentation/providers/auth_provider.dart';
 import 'dashboard_scaffold.dart';
 
@@ -12,9 +11,8 @@ class AccountantDashboard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final user = ref.watch(authProvider).user;
+    ref.watch(authProvider);
     return AppShell(
-      navItems: getNavItemsForRole(user?.roleName ?? 'GUEST'),
       homeRoute: '/accountant/home',
       body: DashboardBody(
         subtitle: 'Manage school finances, fee structures and payment records',
@@ -25,6 +23,8 @@ class AccountantDashboard extends ConsumerWidget {
             sectionTitle: 'Finance',
             sectionIcon: Icons.account_balance_wallet,
             tiles: [
+              // "Add Payment" tile is wired in Step 7 — placeholder route
+              // until student picker is added. For now show all payments.
               _T(
                 'All Payments',
                 Icons.payments,
@@ -44,15 +44,9 @@ class AccountantDashboard extends ConsumerWidget {
             sectionIcon: Icons.people_outline,
             tiles: [
               _T(
-                'Student Accounts',
+                'Students & Accounts',
                 Icons.account_box,
                 AppColors.roleAdmin,
-                () => context.go('/students'),
-              ),
-              _T(
-                'Record Payment',
-                Icons.add_card,
-                AppColors.roleAccountant,
                 () => context.go('/students'),
               ),
             ],

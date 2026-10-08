@@ -149,3 +149,14 @@ RLS is enabled across the application tables. Critical database enforcement incl
 ## Build, test, and CI notes
 
 Tests live under [`test/`](../test/) and cover authentication, role access, models, calendar behavior, student registration, assessments, and dashboard widgets. No checked-in CI workflow was found. Supabase migration/RLS integration tests are not automated in the repository. Live-test evidence and limitations are summarized in the user manual below; production credentials and live data are intentionally excluded.
+
+### Release verification — 8 October 2026
+
+The synchronized source passed the following local release gate:
+
+- `flutter analyze`: no issues found;
+- `flutter test`: all 98 tests passed;
+- `flutter build web --release --dart-define-from-file=env/dev.json`: completed successfully, including the WebAssembly compatibility dry run;
+- local documentation links resolved and the selected release diff passed whitespace validation.
+
+The environment file used for the build is ignored and is not part of the repository.

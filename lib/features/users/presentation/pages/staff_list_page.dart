@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../../core/widgets/app_widgets.dart';
+import '../../../../widgets/can.dart';
 import '../../domain/models/staff.dart';
 import '../../data/repositories/user_repository.dart';
 import '../../../authentication/presentation/providers/auth_provider.dart';
-import 'staff_form_page.dart';
 
 final _staffListProvider = FutureProvider<List<Staff>>((ref) {
   return UserRepository().listStaff();
@@ -24,12 +25,17 @@ class _StaffListPageState extends ConsumerState<StaffListPage> {
   Widget build(BuildContext context) {
     final async = ref.watch(_staffListProvider);
     final cs = Theme.of(context).colorScheme;
+    final canEdit = ref
+        .watch(permissionsProvider)
+        .maybeWhen(
+          data: (permissions) => permissions.contains('staff:write'),
+          orElse: () => false,
+        );
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Staff'),
         actions: [
-          HomeButton(roleName: ref.watch(authProvider).user?.roleName ?? ''),
           IconButton(
             icon: const Icon(Icons.refresh_outlined),
             tooltip: 'Refresh',
@@ -37,16 +43,16 @@ class _StaffListPageState extends ConsumerState<StaffListPage> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          await Navigator.push<bool>(
-            context,
-            MaterialPageRoute(builder: (_) => const StaffFormPage()),
-          );
-          if (mounted) ref.invalidate(_staffListProvider);
-        },
-        icon: const Icon(Icons.person_add),
-        label: const Text('Add Staff'),
+      floatingActionButton: Can(
+        permission: 'staff:write',
+        child: FloatingActionButton.extended(
+          onPressed: () async {
+            await context.push<bool>('/users/staff/new');
+            if (mounted) ref.invalidate(_staffListProvider);
+          },
+          icon: const Icon(Icons.person_add),
+          label: const Text('Add Staff'),
+        ),
       ),
       body: Column(
         children: [
@@ -89,19 +95,6 @@ class _StaffListPageState extends ConsumerState<StaffListPage> {
                     icon: Icons.badge_outlined,
                     title: 'No staff members yet',
                     subtitle: 'Add staff members to get started.',
-                    action: FilledButton.icon(
-                      onPressed: () async {
-                        await Navigator.push<bool>(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const StaffFormPage(),
-                          ),
-                        );
-                        if (mounted) ref.invalidate(_staffListProvider);
-                      },
-                      icon: const Icon(Icons.person_add),
-                      label: const Text('Add Staff'),
-                    ),
                   );
                 }
 
@@ -154,17 +147,19 @@ class _StaffListPageState extends ConsumerState<StaffListPage> {
                             ),
                           ],
                         ),
-                        trailing: const Icon(Icons.chevron_right),
-                        isThreeLine: s.email != null,
-                        onTap: () async {
-                          await Navigator.push<bool>(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => StaffFormPage(existing: s),
-                            ),
-                          );
-                          if (mounted) ref.invalidate(_staffListProvider);
-                        },
+                        trailing: canEdit
+                            ? const Icon(Icons.chevron_right)
+                            : null,
+                        isThreeLine: true,
+                        onTap: canEdit
+                            ? () async {
+                                await context.push<bool>(
+                                  '/users/staff/${s.staffId}/edit',
+                                  extra: s,
+                                );
+                                if (mounted) ref.invalidate(_staffListProvider);
+                              }
+                            : null,
                       ),
                     );
                   },

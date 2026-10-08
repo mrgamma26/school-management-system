@@ -1,0 +1,291 @@
+<div id="academic-year-test-runner">
+  <style>
+    #academic-year-test-runner { color: var(--foreground); }
+    #academic-year-test-runner .runner-head { display: grid; gap: 12px; margin-bottom: 18px; padding-right: 92px; }
+    #academic-year-test-runner .runner-meta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    #academic-year-test-runner .role-copy { margin: 14px 0 18px; max-width: 72ch; }
+    #academic-year-test-runner .phase { display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--border); }
+    #academic-year-test-runner .phase:last-child { border-bottom: 0; }
+    #academic-year-test-runner .phase-number { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--viz-series-1) 18%, transparent); color: var(--foreground); font-weight: 500; }
+    #academic-year-test-runner .phase-body { min-width: 0; }
+    #academic-year-test-runner .phase-title { margin: 4px 0 9px; font-weight: 500; }
+    #academic-year-test-runner .check-list { display: grid; gap: 8px; }
+    #academic-year-test-runner .check-row { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; align-items: start; }
+    #academic-year-test-runner .check-row input { margin-top: 3px; }
+    #academic-year-test-runner .expected { margin-top: 10px; padding: 10px 12px; background: var(--muted); color: var(--foreground); border-radius: 8px; }
+    #academic-year-test-runner .expected strong { font-weight: 500; }
+    #academic-year-test-runner .status-key { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
+    #academic-year-test-runner .status-item { display: inline-flex; align-items: center; gap: 6px; }
+    #academic-year-test-runner .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted-foreground); }
+    #academic-year-test-runner .dot.pass { background: var(--green); }
+    #academic-year-test-runner .dot.block { background: var(--red); }
+    #academic-year-test-runner .dot.display { background: var(--viz-series-1); }
+    #academic-year-test-runner .mini-label { margin-top: 12px; font-weight: 500; }
+    #academic-year-test-runner .completion { min-width: 120px; }
+    @media (max-width: 560px) {
+      #academic-year-test-runner .runner-head { padding-right: 0; }
+      #academic-year-test-runner .phase { grid-template-columns: 30px minmax(0, 1fr); gap: 8px; }
+      #academic-year-test-runner .phase-number { width: 28px; height: 28px; }
+    }
+  </style>
+
+  <div class="runner-head">
+    <div>
+      <h1>Academic year test run</h1>
+      <div class="text-muted">2026 Terms 1–3 → 2027 Term 1 placement</div>
+    </div>
+    <div class="runner-meta">
+      <div class="completion"><strong id="atr-count" class="tabular-nums">0 / 0 complete</strong></div>
+      <div class="progress" role="progressbar" aria-label="Test completion" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+        <div id="atr-progress" class="progress-bar" style="width:0%"></div>
+      </div>
+      <button type="button" class="btn btn-ghost" id="atr-clear">Clear checks</button>
+    </div>
+  </div>
+
+  <div class="nav nav-pills" role="tablist" aria-label="Test role">
+    <button class="nav-link active" id="atr-tab-teacher" role="tab" aria-controls="atr-panel" aria-selected="true" type="button" data-role="teacher">Teacher</button>
+    <button class="nav-link" id="atr-tab-accountant" role="tab" aria-controls="atr-panel" aria-selected="false" type="button" data-role="accountant">Accountant</button>
+    <button class="nav-link" id="atr-tab-headteacher" role="tab" aria-controls="atr-panel" aria-selected="false" type="button" data-role="headteacher">Head Teacher</button>
+    <button class="nav-link" id="atr-tab-security" role="tab" aria-controls="atr-panel" aria-selected="false" type="button" data-role="security">Security & edge cases</button>
+  </div>
+
+  <div class="status-key text-small" aria-label="Expected-result legend">
+    <span class="status-item"><span class="dot pass"></span>must succeed</span>
+    <span class="status-item"><span class="dot block"></span>must be blocked</span>
+    <span class="status-item"><span class="dot display"></span>must display</span>
+  </div>
+
+  <section id="atr-panel" role="tabpanel" aria-labelledby="atr-tab-teacher" aria-live="polite"></section>
+
+  <script>
+    (() => {
+      const root = document.getElementById('academic-year-test-runner');
+      const panel = root.querySelector('#atr-panel');
+      const count = root.querySelector('#atr-count');
+      const progress = root.querySelector('#atr-progress');
+      const progressWrap = progress.parentElement;
+      const tabs = [...root.querySelectorAll('[data-role]')];
+
+      const roles = {
+        teacher: {
+          title: 'Teacher assessment and grade test',
+          copy: 'Repeat the assessment workflow for every assigned subject and every applicable term. Include one deliberately incomplete enrolled-term result.',
+          phases: [
+            { title: 'Open the assigned teaching context', steps: [
+              'Sign in as the Teacher.',
+              'Open Assessments & Grades.',
+              'Select an assigned class and subject.',
+              'Confirm the selector only exposes classes and subjects assigned to this teacher.'
+            ], expected: 'Assigned teaching context opens successfully.' },
+            { title: 'Create an assessment', steps: [
+              'Choose the applicable 2026 term.',
+              'Enter a name such as “Term 1 Mathematics”.',
+              'Set maximum score to 100.',
+              'Choose Exam or Test.',
+              'Create the assessment.'
+            ], expected: 'The assessment appears under the selected class, subject, and term.' },
+            { title: 'Enter and save draft grades', steps: [
+              'Open the assessment and choose Enter Grades.',
+              'Enter scores for all enrolled students.',
+              'Click Save Draft Grades.',
+              'Open progression review data and confirm draft results are not eligible.'
+            ], expected: 'Draft grades are saved, but progression remains blocked.' },
+            { title: 'Submit grades', steps: [
+              'Return to the assessment.',
+              'Click Submit Grades.',
+              'Confirm submitted results become eligible for progression.',
+              'Repeat for every assigned subject and applicable term.'
+            ], expected: 'All submitted subject results contribute to term and annual calculations.' },
+            { title: 'Prove incomplete results are detected', steps: [
+              'Choose one enrolled student and one required subject.',
+              'Leave that subject without submitted results.',
+              'Refresh the progression review.'
+            ], expected: 'Progression stays blocked and identifies the missing subject.' }
+          ]
+        },
+        accountant: {
+          title: 'Accountant payment test',
+          copy: 'Create the fee, record a payment, then verify the same transaction from accountant and guardian views.',
+          phases: [
+            { title: 'Create the fee structure', steps: [
+              'Sign in as Accountant.',
+              'Open Fee Structures.',
+              'Create Form 1A fees such as Tuition and Exam Fee.',
+              'Confirm the structure is assigned to the intended academic period.'
+            ], expected: 'The Form 1A fee structure is available for student accounts.' },
+            { title: 'Record a student payment', steps: [
+              'Open Students & Accounts.',
+              'Select a student and choose Record Payment.',
+              'Choose academic year and fee type.',
+              'Enter amount, payment method, payment date, and a unique receipt number.',
+              'Save the payment.'
+            ], expected: 'The payment saves once and updates the student balance.' },
+            { title: 'Verify both account views', steps: [
+              'Confirm the payment appears in All Payments.',
+              'Confirm it appears in the student account history.',
+              'Sign in as the linked Guardian.',
+              'Open Payment History and locate the same receipt.'
+            ], expected: 'Amount, date, fee type, method, and receipt number match in all three views.' }
+          ]
+        },
+        headteacher: {
+          title: 'Head Teacher progression test',
+          copy: 'Run this after the required grades are submitted. Test both promoted and retained learners, including late-admission display rules.',
+          phases: [
+            { title: 'Calculate the annual review', steps: [
+              'Sign in as Head Teacher.',
+              'Open Progression Reviews.',
+              'Select the 2026 period.',
+              'Calculate or refresh the student’s annual review.'
+            ], expected: 'A current review is generated from submitted, applicable-term results.' },
+            { title: 'Validate calculations and eligibility', steps: [
+              'Confirm Term 1, Term 2, and Term 3 averages display.',
+              'Confirm the annual average is calculated by the system.',
+              'Confirm 50% or higher recommends promotion.',
+              'Confirm below 50% recommends retention.',
+              'Confirm a term before late admission displays “— / Not enrolled”.',
+              'Confirm missing results for an enrolled term block a decision.'
+            ], expected: 'Only enrolled terms affect the annual average; missing enrolled-term results are clearly identified.' },
+            { title: 'Review evidence and decide', steps: [
+              'Open the student’s evidence or review details.',
+              'Review subjects, scores, averages, comments, and missing-result warnings.',
+              'Choose Promote or Retain.',
+              'Enter the required decision reason.',
+              'Confirm the decision.'
+            ], expected: 'The decision is saved only when evidence is complete and a reason is supplied.' },
+            { title: 'Verify a promoted learner', steps: [
+              'Confirm the Form 1 placement closes.',
+              'Confirm a Form 2 placement is created for 2027 Term 1.',
+              'Confirm Form 2 subjects are assigned.',
+              'Confirm audit history records the decision and reason.',
+              'Sign in as Guardian and confirm “Promoted to Form 2” is visible.'
+            ], expected: 'One valid Form 2 placement exists, with subjects and an auditable decision.' },
+            { title: 'Verify a retained learner', steps: [
+              'Confirm no Form 2 placement is created.',
+              'Confirm the decision is RETAINED.',
+              'Sign in as Guardian and confirm retention status is visible.',
+              'Confirm audit history contains the decision reason.'
+            ], expected: 'The learner remains in the current form and the reason is traceable.' }
+          ]
+        },
+        security: {
+          title: 'Security and edge-case tests',
+          copy: 'These checks confirm authorization, idempotency, configuration failures, and late-admission calculations.',
+          phases: [
+            { title: 'Reject unauthorized grade entry', steps: [
+              'Sign in as a teacher who is not assigned to the target class and subject.',
+              'Try opening or submitting grades for that assignment.'
+            ], expected: 'Access is blocked and no grade data changes.' },
+            { title: 'Reject unauthorized progression decisions', steps: [
+              'Try making a decision as Administrator.',
+              'Repeat as Teacher, Accountant, and Guardian.'
+            ], expected: 'Every non-Head-Teacher attempt is blocked.' },
+            { title: 'Block manual promotion while review is pending', steps: [
+              'Use a learner with a pending or incomplete progression review.',
+              'Try opening Promote / Move Class.'
+            ], expected: 'The manual route is blocked and explains that the review must be completed.' },
+            { title: 'Prevent duplicate promotion', steps: [
+              'Promote an eligible learner once.',
+              'Attempt to promote the same learner again.',
+              'Inspect the 2027 Term 1 placements.'
+            ], expected: 'The second attempt creates no duplicate placement.' },
+            { title: 'Expose missing configuration', steps: [
+              'Remove or disable Form 2A, or remove its progression mapping.',
+              'Attempt to promote an otherwise eligible learner.'
+            ], expected: 'Promotion is blocked with a clear Form 2 placement or mapping configuration error.' },
+            { title: 'Validate late-admission averaging', steps: [
+              'For a Term 2 admission, confirm Term 1 displays “— / Not enrolled” and the average uses Terms 2 and 3 only.',
+              'For a Term 3 admission, confirm Terms 1 and 2 display “— / Not enrolled” and the average uses Term 3 only.',
+              'For both learners, confirm the same 50% promotion threshold applies.'
+            ], expected: 'Non-enrolled terms never block progression or dilute the annual average.' }
+          ]
+        }
+      };
+
+      const saved = window.openai?.widgetState?.privateContent;
+      const state = {
+        role: saved?.role && roles[saved.role] ? saved.role : 'teacher',
+        checked: saved?.checked && typeof saved.checked === 'object' ? saved.checked : {}
+      };
+
+      const allIds = () => Object.entries(roles).flatMap(([role, data]) =>
+        data.phases.flatMap((phase, phaseIndex) => phase.steps.map((_, stepIndex) => `${role}-${phaseIndex}-${stepIndex}`))
+      );
+
+      const persist = () => {
+        window.openai?.setWidgetState({
+          modelContent: { activeTestRole: state.role, completedChecks: Object.values(state.checked).filter(Boolean).length },
+          privateContent: state
+        }).catch(() => {});
+      };
+
+      const updateProgress = () => {
+        const ids = allIds();
+        const done = ids.filter(id => state.checked[id]).length;
+        const pct = ids.length ? Math.round(done / ids.length * 100) : 0;
+        count.textContent = `${done} / ${ids.length} complete`;
+        progress.style.width = `${pct}%`;
+        progressWrap.setAttribute('aria-valuenow', String(pct));
+      };
+
+      const render = () => {
+        const data = roles[state.role];
+        tabs.forEach(tab => {
+          const active = tab.dataset.role === state.role;
+          tab.classList.toggle('active', active);
+          tab.setAttribute('aria-selected', String(active));
+        });
+        panel.setAttribute('aria-labelledby', `atr-tab-${state.role}`);
+        panel.innerHTML = `
+          <div class="role-copy"><h2>${data.title}</h2><div class="text-muted">${data.copy}</div></div>
+          ${data.phases.map((phase, phaseIndex) => `
+            <div class="phase">
+              <div class="phase-number" aria-hidden="true">${phaseIndex + 1}</div>
+              <div class="phase-body">
+                <div class="phase-title">${phase.title}</div>
+                <div class="check-list">
+                  ${phase.steps.map((step, stepIndex) => {
+                    const id = `${state.role}-${phaseIndex}-${stepIndex}`;
+                    return `<label class="check-row" for="${id}"><input class="form-check-input" type="checkbox" id="${id}" data-check="${id}" ${state.checked[id] ? 'checked' : ''}><span>${step}</span></label>`;
+                  }).join('')}
+                </div>
+                <div class="expected"><strong>Expected:</strong> ${phase.expected}</div>
+              </div>
+            </div>
+          `).join('')}`;
+        updateProgress();
+      };
+
+      tabs.forEach(tab => tab.addEventListener('click', () => {
+        state.role = tab.dataset.role;
+        render();
+        persist();
+      }));
+
+      panel.addEventListener('change', event => {
+        const box = event.target.closest('[data-check]');
+        if (!box) return;
+        state.checked[box.dataset.check] = box.checked;
+        updateProgress();
+        persist();
+      });
+
+      root.querySelector('#atr-clear').addEventListener('click', () => {
+        state.checked = {};
+        render();
+        persist();
+      });
+
+      window.addEventListener('openai:set_globals', event => {
+        const incoming = event.detail?.globals?.widgetState?.privateContent;
+        if (!incoming) return;
+        if (incoming.role && roles[incoming.role]) state.role = incoming.role;
+        state.checked = incoming.checked && typeof incoming.checked === 'object' ? incoming.checked : {};
+        render();
+      });
+
+      render();
+    })();
+  </script>
+</div>

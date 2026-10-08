@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/widgets/app_widgets.dart';
+import '../../../core/constants/app_strings.dart';
 import '../../authentication/presentation/providers/auth_provider.dart';
 
 /// Body-only content for a role dashboard - no Scaffold wrapping.
@@ -71,13 +72,13 @@ class DashboardScaffold extends ConsumerWidget {
             Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                color: roleColor.withOpacity(0.12),
+                color: roleColor.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(Icons.school, size: 20, color: roleColor),
             ),
             const SizedBox(width: 10),
-            const Text('Mai Halima School'),
+            Text(AppStrings.appName),
           ],
         ),
         actions: [
@@ -124,7 +125,7 @@ class _WelcomeBanner extends StatelessWidget {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [roleColor, roleColor.withOpacity(0.75)],
+          colors: [roleColor, roleColor.withValues(alpha: 0.75)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -148,7 +149,7 @@ class _WelcomeBanner extends StatelessWidget {
                 Text(
                   subtitle,
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.85),
+                    color: Colors.white.withValues(alpha: 0.85),
                     fontSize: 13,
                   ),
                 ),
@@ -158,7 +159,7 @@ class _WelcomeBanner extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
+              color: Colors.white.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(16),
             ),
             child: Icon(roleIcon, color: Colors.white, size: 30),
@@ -184,12 +185,14 @@ class DashGrid extends StatelessWidget {
   final String sectionTitle;
   final IconData? sectionIcon;
   final List<TileData> tiles;
+  final int maxColumns;
 
   const DashGrid({
     super.key,
     required this.sectionTitle,
     this.sectionIcon,
     required this.tiles,
+    this.maxColumns = 2,
   });
 
   @override
@@ -199,24 +202,35 @@ class DashGrid extends StatelessWidget {
       children: [
         SectionHeader(sectionTitle, icon: sectionIcon),
         const SizedBox(height: 8),
-        GridView.count(
-          crossAxisCount: 2,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: 10,
-          crossAxisSpacing: 10,
-          childAspectRatio: 1.35,
-          children: tiles
-              .map(
-                (t) => DashTile(
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final columns = maxColumns == 1
+                ? 1
+                : maxColumns == 3
+                ? (constraints.maxWidth >= 760 ? 3 : 1)
+                : (constraints.maxWidth >= 480 ? 2 : 1);
+            return GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: tiles.length,
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: columns,
+                mainAxisExtent: 132,
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
+              ),
+              itemBuilder: (context, index) {
+                final t = tiles[index];
+                return DashTile(
                   label: t.label,
                   icon: t.icon,
                   color: t.color,
                   onTap: t.onTap,
                   badge: t.badge,
-                ),
-              )
-              .toList(),
+                );
+              },
+            );
+          },
         ),
         const SizedBox(height: 16),
       ],

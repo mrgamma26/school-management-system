@@ -54,10 +54,8 @@ class AppColors {
   static Color forRole(String role) {
     switch (role.trim().toUpperCase()) {
       case 'SUPER_USER':
-      case 'SYSTEM_ADMIN':
         return const Color(0xFF7C3AED);
       case 'ADMINISTRATOR':
-      case 'REGISTRAR':
         return primary;
       case 'TEACHER':
         return const Color(0xFF0891B2);

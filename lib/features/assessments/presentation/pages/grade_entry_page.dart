@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import '../../../../core/errors/app_exception.dart';
+import '../../../../core/auth/permission_helper.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/widgets/app_widgets.dart';
+import '../../../../widgets/can.dart';
 import '../../data/grade_repository.dart';
 import '../../../../core/database/supabase_client.dart';
 import '../../../../core/services/audit_service.dart';
@@ -54,12 +56,16 @@ class GradeEntryPage extends ConsumerStatefulWidget {
   final String assessmentName;
   final double maxScore;
   final String classSubjectId;
+  final String className;
+  final String subjectName;
 
   const GradeEntryPage({
     required this.assessmentId,
     required this.assessmentName,
     required this.maxScore,
     required this.classSubjectId,
+    this.className = 'Class',
+    this.subjectName = 'Subject',
     super.key,
   });
 
@@ -69,12 +75,19 @@ class GradeEntryPage extends ConsumerStatefulWidget {
 
 class _GradeEntryPageState extends ConsumerState<GradeEntryPage> {
   final Map<String, TextEditingController> _controllers = {};
+  final Map<String, FocusNode> _scoreFocusNodes = {};
   final Map<String, String> _statuses = {};
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
+  int _focusedStudentIndex = 0;
   bool _saving = false;
 
   bool get _canEdit {
-    final r = ref.read(authProvider).user?.roleName.toUpperCase() ?? '';
-    return r == 'TEACHER' || r == 'SYSTEM_ADMIN' || r == 'SUPER_USER';
+    final permHelper = ref.watch(permissionHelperProvider);
+    return permHelper.maybeWhen(
+      data: (perm) => perm?.canEnterGrades ?? false,
+      orElse: () => false,
+    );
   }
 
   @override
@@ -82,7 +95,24 @@ class _GradeEntryPageState extends ConsumerState<GradeEntryPage> {
     for (final c in _controllers.values) {
       c.dispose();
     }
+    for (final node in _scoreFocusNodes.values) {
+      node.dispose();
+    }
+    _searchController.dispose();
     super.dispose();
+  }
+
+  void _focusStudent(List<Map<String, dynamic>> students, int offset) {
+    if (students.isEmpty) return;
+    setState(() {
+      _focusedStudentIndex = (_focusedStudentIndex + offset)
+          .clamp(0, students.length - 1)
+          .toInt();
+    });
+    final student =
+        students[_focusedStudentIndex]['student'] as Map<String, dynamic>;
+    final studentId = student['studentid'] as String;
+    _scoreFocusNodes[studentId]?.requestFocus();
   }
 
   Future<void> _saveAll(
@@ -150,7 +180,7 @@ class _GradeEntryPageState extends ConsumerState<GradeEntryPage> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+        ).showSnackBar(SnackBar(content: Text(friendlyError(e))));
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -171,7 +201,7 @@ class _GradeEntryPageState extends ConsumerState<GradeEntryPage> {
           children: [
             Text(widget.assessmentName),
             Text(
-              'Max score: ${widget.maxScore}',
+              '${widget.subjectName} · ${widget.className} · Out of ${widget.maxScore}',
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.normal,
@@ -179,9 +209,7 @@ class _GradeEntryPageState extends ConsumerState<GradeEntryPage> {
             ),
           ],
         ),
-        actions: [
-          HomeButton(roleName: ref.watch(authProvider).user?.roleName ?? ''),
-        ],
+        actions: const [],
       ),
       body: studentsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -200,6 +228,7 @@ class _GradeEntryPageState extends ConsumerState<GradeEntryPage> {
                   text: g?['score']?.toString() ?? '',
                 );
                 _statuses[sid] = g?['gradestatus'] as String? ?? 'PRESENT';
+                _scoreFocusNodes[sid] = FocusNode();
               }
             }
 
@@ -212,8 +241,31 @@ class _GradeEntryPageState extends ConsumerState<GradeEntryPage> {
               );
             }
 
+            final visibleStudents = students.where((row) {
+              final student = row['student'] as Map<String, dynamic>;
+              final name = '${student['firstname']} ${student['lastname']}'
+                  .toLowerCase();
+              return name.contains(_searchQuery.toLowerCase());
+            }).toList();
+            if (_focusedStudentIndex >= visibleStudents.length) {
+              _focusedStudentIndex = visibleStudents.isEmpty
+                  ? 0
+                  : visibleStudents.length - 1;
+            }
+
             return Column(
               children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                  child: TextField(
+                    controller: _searchController,
+                    decoration: const InputDecoration(
+                      labelText: 'Search students',
+                      prefixIcon: Icon(Icons.search),
+                    ),
+                    onChanged: (value) => setState(() => _searchQuery = value),
+                  ),
+                ),
                 // Header row
                 Container(
                   color: Theme.of(context).colorScheme.surfaceContainerHighest,
@@ -251,10 +303,11 @@ class _GradeEntryPageState extends ConsumerState<GradeEntryPage> {
                 ),
                 Expanded(
                   child: ListView.separated(
-                    itemCount: students.length,
+                    itemCount: visibleStudents.length,
                     separatorBuilder: (_, _) => const Divider(height: 1),
                     itemBuilder: (context, i) {
-                      final st = students[i]['student'] as Map<String, dynamic>;
+                      final st =
+                          visibleStudents[i]['student'] as Map<String, dynamic>;
                       final sid = st['studentid'] as String;
                       final name = '${st['firstname']} ${st['lastname']}';
                       return Padding(
@@ -264,13 +317,28 @@ class _GradeEntryPageState extends ConsumerState<GradeEntryPage> {
                         ),
                         child: Row(
                           children: [
-                            Expanded(flex: 3, child: Text(name)),
+                            Expanded(
+                              flex: 3,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(name),
+                                  Text(
+                                    widget.className,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodySmall,
+                                  ),
+                                ],
+                              ),
+                            ),
                             // Score field
                             SizedBox(
                               width: 90,
                               child: _canEdit
                                   ? TextField(
                                       controller: _controllers[sid],
+                                      focusNode: _scoreFocusNodes[sid],
                                       keyboardType: TextInputType.number,
                                       textAlign: TextAlign.center,
                                       decoration: InputDecoration(
@@ -336,33 +404,92 @@ class _GradeEntryPageState extends ConsumerState<GradeEntryPage> {
                     },
                   ),
                 ),
-                if (_canEdit)
+                if (_canEdit && visibleStudents.isNotEmpty)
                   Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: FutureBuilder<String>(
-                      future: supabase
-                          .from('staff')
-                          .select('staffid')
-                          .eq('userid', ref.read(authProvider).user!.userId)
-                          .single()
-                          .then((r) => r['staffid'] as String),
-                      builder: (ctx, snap) => FilledButton.icon(
-                        onPressed: _saving || !snap.hasData
-                            ? null
-                            : () => _saveAll(students, existing, snap.data!),
-                        icon: _saving
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Icon(Icons.save),
-                        label: const Text('Save All Grades'),
-                        style: FilledButton.styleFrom(
-                          minimumSize: const Size.fromHeight(48),
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                    child: Row(
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: _focusedStudentIndex == 0
+                              ? null
+                              : () => _focusStudent(visibleStudents, -1),
+                          icon: const Icon(Icons.chevron_left),
+                          label: const Text('Previous'),
+                        ),
+                        Expanded(
+                          child: Text(
+                            '${_focusedStudentIndex + 1} of ${visibleStudents.length}',
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed:
+                              _focusedStudentIndex >= visibleStudents.length - 1
+                              ? null
+                              : () => _focusStudent(visibleStudents, 1),
+                          icon: const Icon(Icons.chevron_right),
+                          label: const Text('Next'),
+                        ),
+                      ],
+                    ),
+                  ),
+                if (_canEdit)
+                  Can(
+                    permission: 'grades:write',
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: FutureBuilder<String>(
+                        future: supabase
+                            .from('staff')
+                            .select('staffid')
+                            .eq('userid', ref.read(authProvider).user!.userId)
+                            .single()
+                            .then((r) => r['staffid'] as String),
+                        builder: (ctx, snap) => Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            FilledButton.icon(
+                              onPressed: _saving || !snap.hasData
+                                  ? null
+                                  : () => _saveAll(
+                                      students,
+                                      existing,
+                                      snap.data!,
+                                    ),
+                              icon: _saving
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Icon(Icons.save),
+                              label: const Text('Save Draft Grades'),
+                            ),
+                            const SizedBox(height: 8),
+                            OutlinedButton.icon(
+                              onPressed: _saving
+                                  ? null
+                                  : () async {
+                                      await GradeRepository().submitAssessment(
+                                        widget.assessmentId,
+                                      );
+                                      if (ctx.mounted) {
+                                        ScaffoldMessenger.of(ctx).showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                              'Grades submitted for progression.',
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    },
+                              icon: const Icon(Icons.publish_outlined),
+                              label: const Text('Submit Grades'),
+                            ),
+                          ],
                         ),
                       ),
                     ),

@@ -10,8 +10,7 @@ class ForgotPasswordPage extends ConsumerStatefulWidget {
   const ForgotPasswordPage({super.key});
 
   @override
-  ConsumerState<ForgotPasswordPage> createState() =>
-      _ForgotPasswordPageState();
+  ConsumerState<ForgotPasswordPage> createState() => _ForgotPasswordPageState();
 }
 
 class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
@@ -38,7 +37,7 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
     try {
       await supabase.auth.resetPasswordForEmail(
         _emailCtrl.text.trim(),
-        redirectTo: 'https://yourapp.com/reset-password',
+        redirectTo: Uri.base.resolve('/reset-password').toString(),
       );
 
       setState(() {
@@ -56,8 +55,6 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final size = MediaQuery.sizeOf(context);
-    final isWide = size.width > 800;
 
     return Scaffold(
       backgroundColor: cs.surface,
@@ -95,11 +92,7 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
               color: cs.primaryContainer,
               borderRadius: BorderRadius.circular(16),
             ),
-            child: Icon(
-              Icons.lock_reset,
-              size: 48,
-              color: cs.primary,
-            ),
+            child: Icon(Icons.lock_reset, size: 48, color: cs.primary),
           ),
           const SizedBox(height: 32),
 
@@ -107,17 +100,17 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
           Text(
             'Forgot Password?',
             style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: cs.onSurface,
-                ),
+              fontWeight: FontWeight.w800,
+              color: cs.onSurface,
+            ),
           ),
           const SizedBox(height: 8),
           Text(
             'Enter your email address and we\'ll send you instructions to reset your password.',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: cs.onSurface.withValues(alpha: 0.65),
-                  height: 1.5,
-                ),
+              color: cs.onSurface.withValues(alpha: 0.65),
+              height: 1.5,
+            ),
           ),
           const SizedBox(height: 32),
 
@@ -149,10 +142,7 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
           if (_errorMessage != null) ...[
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 12,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
                 color: cs.errorContainer,
                 borderRadius: BorderRadius.circular(12),
@@ -235,26 +225,26 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
         Text(
           'Check Your Email',
           style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                fontWeight: FontWeight.w800,
-                color: cs.onSurface,
-              ),
+            fontWeight: FontWeight.w800,
+            color: cs.onSurface,
+          ),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 12),
         Text(
           'We\'ve sent password reset instructions to:',
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: cs.onSurface.withValues(alpha: 0.65),
-              ),
+            color: cs.onSurface.withValues(alpha: 0.65),
+          ),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 8),
         Text(
           _emailCtrl.text.trim(),
           style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: cs.primary,
-              ),
+            fontWeight: FontWeight.w600,
+            color: cs.primary,
+          ),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 32),
@@ -265,20 +255,14 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
           decoration: BoxDecoration(
             color: cs.primaryContainer.withValues(alpha: 0.3),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: cs.primary.withValues(alpha: 0.2),
-            ),
+            border: Border.all(color: cs.primary.withValues(alpha: 0.2)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  Icon(
-                    Icons.info_outline,
-                    size: 20,
-                    color: cs.primary,
-                  ),
+                  Icon(Icons.info_outline, size: 20, color: cs.primary),
                   const SizedBox(width: 8),
                   Text(
                     'Next Steps',
@@ -296,9 +280,9 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
                 '3. Create a new password\n'
                 '4. Sign in with your new password',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: cs.onSurface.withValues(alpha: 0.7),
-                      height: 1.6,
-                    ),
+                  color: cs.onSurface.withValues(alpha: 0.7),
+                  height: 1.6,
+                ),
               ),
             ],
           ),

@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
+import '../../../../core/errors/app_exception.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/widgets/app_widgets.dart';
+import 'package:go_router/go_router.dart';
 import '../../domain/models/guardian.dart';
 import '../../data/repositories/user_repository.dart';
 import '../../../authentication/presentation/providers/auth_provider.dart';
-import 'guardian_form_page.dart';
 
 final _guardianListProvider = FutureProvider<List<Guardian>>((ref) {
   return UserRepository().listGuardians();
 });
 
-/// Displays all guardians with search and navigation to the form.
+/// Displays guardians created during student registration and supports edits.
 class GuardianListPage extends ConsumerStatefulWidget {
   const GuardianListPage({super.key});
 
@@ -24,30 +24,23 @@ class _GuardianListPageState extends ConsumerState<GuardianListPage> {
   @override
   Widget build(BuildContext context) {
     final async = ref.watch(_guardianListProvider);
-    final role = ref.watch(authProvider).user?.roleName ?? '';
+    final canEdit = ref
+        .watch(permissionsProvider)
+        .maybeWhen(
+          data: (permissions) => permissions.contains('guardians:write'),
+          orElse: () => false,
+        );
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Guardians'),
         actions: [
-          HomeButton(roleName: role),
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh',
             onPressed: () => ref.invalidate(_guardianListProvider),
           ),
         ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          await Navigator.push<bool>(
-            context,
-            MaterialPageRoute(builder: (_) => const GuardianFormPage()),
-          );
-          if (mounted) ref.invalidate(_guardianListProvider);
-        },
-        icon: const Icon(Icons.person_add),
-        label: const Text('Add Guardian'),
       ),
       body: Column(
         children: [
@@ -64,7 +57,7 @@ class _GuardianListPageState extends ConsumerState<GuardianListPage> {
           Expanded(
             child: async.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('Error: $e')),
+              error: (e, _) => Center(child: Text(friendlyError(e))),
               data: (guardians) {
                 final filtered = _query.isEmpty
                     ? guardians
@@ -95,15 +88,17 @@ class _GuardianListPageState extends ConsumerState<GuardianListPage> {
                       subtitle: Text(
                         '${g.email}${g.phoneNumber != null ? ' - ${g.phoneNumber}' : ''}',
                       ),
-                      onTap: () async {
-                        await Navigator.push<bool>(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => GuardianFormPage(existing: g),
-                          ),
-                        );
-                        if (mounted) ref.invalidate(_guardianListProvider);
-                      },
+                      onTap: canEdit
+                          ? () async {
+                              await context.push<bool>(
+                                '/users/guardians/${g.guardianId}/edit',
+                                extra: g,
+                              );
+                              if (mounted) {
+                                ref.invalidate(_guardianListProvider);
+                              }
+                            }
+                          : null,
                     );
                   },
                 );

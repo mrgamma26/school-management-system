@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../../core/widgets/app_widgets.dart';
 import '../../data/academic_repository.dart';
 import '../../domain/models/class_model.dart';
 import '../../../authentication/presentation/providers/auth_provider.dart';
-import 'class_form_page.dart';
 
-final _classesProvider = FutureProvider<List<ClassModel>>((ref) {
+final _classesProvider = FutureProvider.autoDispose<List<ClassModel>>((ref) {
   return AcademicRepository().listClasses();
 });
 
@@ -17,12 +17,17 @@ class ClassListPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(_classesProvider);
     final cs = Theme.of(context).colorScheme;
+    final canEdit = ref
+        .watch(permissionsProvider)
+        .maybeWhen(
+          data: (permissions) => permissions.contains('academics:write'),
+          orElse: () => false,
+        );
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Classes'),
         actions: [
-          HomeButton(roleName: ref.watch(authProvider).user?.roleName ?? ''),
           IconButton(
             icon: const Icon(Icons.refresh_outlined),
             onPressed: () => ref.invalidate(_classesProvider),
@@ -31,10 +36,7 @@ class ClassListPage extends ConsumerWidget {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
-          await Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const ClassFormPage()),
-          );
+          await context.push('/academics/classes/new');
           ref.invalidate(_classesProvider);
         },
         icon: const Icon(Icons.add),
@@ -48,20 +50,25 @@ class ClassListPage extends ConsumerWidget {
         ),
         data: (classes) {
           if (classes.isEmpty) {
-            return EmptyState(
-              icon: Icons.class_outlined,
-              title: 'No classes yet',
-              subtitle: 'Add classes to organise students by form.',
-              action: FilledButton.icon(
-                onPressed: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const ClassFormPage()),
-                  );
-                  ref.invalidate(_classesProvider);
-                },
-                icon: const Icon(Icons.add),
-                label: const Text('Add Class'),
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  EmptyState(
+                    icon: Icons.class_outlined,
+                    title: 'No classes yet',
+                    subtitle: 'Add classes to organise students by form.',
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      await context.push('/academics/classes/new');
+                      ref.invalidate(_classesProvider);
+                    },
+                    icon: const Icon(Icons.add),
+                    label: const Text('Create Class'),
+                  ),
+                ],
               ),
             );
           }
@@ -115,16 +122,18 @@ class ClassListPage extends ConsumerWidget {
                         color: AppColors.secondary,
                       ),
                       title: Text(cls.className),
-                      trailing: const Icon(Icons.edit_outlined, size: 18),
-                      onTap: () async {
-                        await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => ClassFormPage(existing: cls),
-                          ),
-                        );
-                        ref.invalidate(_classesProvider);
-                      },
+                      trailing: canEdit
+                          ? const Icon(Icons.edit_outlined, size: 18)
+                          : null,
+                      onTap: canEdit
+                          ? () async {
+                              await context.push(
+                                '/academics/classes/${cls.classId}/edit',
+                                extra: cls,
+                              );
+                              ref.invalidate(_classesProvider);
+                            }
+                          : null,
                     );
                   }).toList(),
                 ),

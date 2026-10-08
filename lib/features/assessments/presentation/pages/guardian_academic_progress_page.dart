@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../../../core/errors/app_exception.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/widgets/app_widgets.dart';
 import '../../../../core/database/supabase_client.dart';
 import '../../../authentication/presentation/providers/auth_provider.dart';
 
@@ -105,15 +105,10 @@ class _GuardianAcademicProgressPageState
     final yearsAsync = ref.watch(_progressYearsProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Academic Progress'),
-        actions: [
-          HomeButton(roleName: ref.watch(authProvider).user?.roleName ?? ''),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Academic Progress'), actions: const []),
       body: childrenAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
+        error: (e, _) => Center(child: Text(friendlyError(e))),
         data: (children) {
           if (children.isEmpty) {
             return const Center(
@@ -125,43 +120,68 @@ class _GuardianAcademicProgressPageState
               ),
             );
           }
+          final onlyStudent = children.length == 1
+              ? children.single['student'] as Map<String, dynamic>
+              : null;
+          if (onlyStudent != null && _studentId == null) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted && _studentId == null) {
+                setState(() {
+                  _studentId = onlyStudent['studentid'] as String;
+                  _studentName =
+                      '${onlyStudent['firstname']} ${onlyStudent['lastname']}';
+                });
+              }
+            });
+          }
           return Column(
             children: [
               // ── Selectors ───────────────────────────────────────────────
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                child: DropdownButtonFormField<String>(
-                  value: _studentId,
-                  decoration: const InputDecoration(
-                    labelText: 'Child',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.child_care),
-                  ),
-                  hint: const Text('Select child'),
-                  items: children.map((c) {
-                    final s = c['student'] as Map<String, dynamic>;
-                    final id = s['studentid'] as String;
-                    final nm = '${s['firstname']} ${s['lastname']}';
-                    return DropdownMenuItem(value: id, child: Text(nm));
-                  }).toList(),
-                  onChanged: (v) {
-                    final s = children
-                        .map((c) => c['student'] as Map<String, dynamic>)
-                        .firstWhere((s) => s['studentid'] == v);
-                    setState(() {
-                      _studentId = v;
-                      _studentName = '${s['firstname']} ${s['lastname']}';
-                    });
-                  },
-                ),
+                child: onlyStudent != null
+                    ? InputDecorator(
+                        decoration: const InputDecoration(
+                          labelText: 'Child',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.child_care),
+                        ),
+                        child: Text(
+                          '${onlyStudent['firstname']} ${onlyStudent['lastname']}',
+                        ),
+                      )
+                    : DropdownButtonFormField<String>(
+                        initialValue: _studentId,
+                        decoration: const InputDecoration(
+                          labelText: 'Child',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.child_care),
+                        ),
+                        hint: const Text('Select child'),
+                        items: children.map((c) {
+                          final s = c['student'] as Map<String, dynamic>;
+                          final id = s['studentid'] as String;
+                          final nm = '${s['firstname']} ${s['lastname']}';
+                          return DropdownMenuItem(value: id, child: Text(nm));
+                        }).toList(),
+                        onChanged: (v) {
+                          final s = children
+                              .map((c) => c['student'] as Map<String, dynamic>)
+                              .firstWhere((s) => s['studentid'] == v);
+                          setState(() {
+                            _studentId = v;
+                            _studentName = '${s['firstname']} ${s['lastname']}';
+                          });
+                        },
+                      ),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                 child: yearsAsync.when(
                   loading: () => const LinearProgressIndicator(),
-                  error: (e, _) => Text('Error: $e'),
+                  error: (e, _) => Text(friendlyError(e)),
                   data: (years) => DropdownButtonFormField<String>(
-                    value: _yearId,
+                    initialValue: _yearId,
                     decoration: const InputDecoration(
                       labelText: 'Academic Year',
                       border: OutlineInputBorder(),

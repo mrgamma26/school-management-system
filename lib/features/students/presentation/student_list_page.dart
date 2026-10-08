@@ -1,16 +1,47 @@
+import 'package:school_management_app/features/academics/domain/models/academic_year.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/widgets/app_widgets.dart';
 import '../domain/student.dart';
 import '../data/student_repository.dart';
 import '../../authentication/presentation/providers/auth_provider.dart';
 import '../../../core/services/export_service.dart';
-import 'student_form_page.dart';
-import 'student_details_page.dart';
+import '../../academics/data/academic_repository.dart';
+import '../../../widgets/can.dart';
+import '../../../core/auth/permission_helper.dart';
+import '../../../widgets/skeleton_loader.dart';
 
 final _studentListProvider = FutureProvider<List<Student>>((ref) {
   return StudentRepository().listStudents();
 });
+
+final _currentAcademicYearsProvider =
+    FutureProvider<List<Map<String, dynamic>>>((ref) {
+      return AcademicRepository().currentAcademicYears();
+    });
+
+final _teacherClassesProvider =
+    FutureProvider.family<
+      List<Map<String, dynamic>>,
+      ({String userId, String yearId})
+    >((ref, args) {
+      return AcademicRepository().teacherClasses(
+        userId: args.userId,
+        academicYearId: args.yearId,
+      );
+    });
+
+final _teacherStudentsProvider =
+    FutureProvider.family<List<Student>, ({String classId, String yearId})>((
+      ref,
+      args,
+    ) {
+      return StudentRepository().listStudentsForClass(
+        classId: args.classId,
+        academicYearId: args.yearId,
+      );
+    });
 
 class StudentListPage extends ConsumerStatefulWidget {
   const StudentListPage({super.key});
@@ -19,12 +50,109 @@ class StudentListPage extends ConsumerStatefulWidget {
   ConsumerState<StudentListPage> createState() => _StudentListPageState();
 }
 
+class _TeacherStudentFilters extends StatelessWidget {
+  final AsyncValue<List<Map<String, dynamic>>> years;
+  final AsyncValue<List<Map<String, dynamic>>>? classes;
+  final String? selectedYearId;
+  final String? selectedClassId;
+  final ValueChanged<String?> onYearChanged;
+  final ValueChanged<String?> onClassChanged;
+
+  const _TeacherStudentFilters({
+    required this.years,
+    required this.classes,
+    required this.selectedYearId,
+    required this.selectedClassId,
+    required this.onYearChanged,
+    required this.onClassChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      child: Row(
+        children: [
+          Expanded(
+            child: years.when(
+              loading: () => const LinearProgressIndicator(),
+              error: (error, _) =>
+                  Text('Unable to load academic years: $error'),
+              data: (items) => DropdownButtonFormField<String>(
+                initialValue: selectedYearId,
+                decoration: const InputDecoration(
+                  labelText: 'Academic year',
+                  border: OutlineInputBorder(),
+                ),
+                items: items
+                    .map(
+                      (item) => DropdownMenuItem<String>(
+                        value: item['academicyearid'] as String,
+                        child: Text(formatAcademicYear(item['academicyear'])),
+                      ),
+                    )
+                    .toList(),
+                onChanged: onYearChanged,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: classes == null
+                ? const SizedBox.shrink()
+                : classes!.when(
+                    loading: () => const LinearProgressIndicator(),
+                    error: (error, _) => Text('Unable to load classes: $error'),
+                    data: (items) => DropdownButtonFormField<String>(
+                      initialValue: selectedClassId,
+                      decoration: const InputDecoration(
+                        labelText: 'Class',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: items
+                          .map(
+                            (item) => DropdownMenuItem<String>(
+                              value: item['classid'] as String,
+                              child: Text(
+                                (item['classname'] ??
+                                        item['classroomname'] ??
+                                        'Class')
+                                    .toString(),
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: onClassChanged,
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _StudentListPageState extends ConsumerState<StudentListPage> {
   String _query = '';
   // FIX 6: Status filter and sort
   String _statusFilter = 'ALL'; // 'ALL', 'ENROLLED', 'GRADUATED', 'WITHDRAWN'
   String _sortBy = 'name'; // 'name', 'date', 'status'
   bool _sortAscending = true;
+  String? _teacherYearId;
+  String? _teacherClassId;
+  String? _adminAcademicYearId; // Academic year filter for admins
+
+  void _refreshStudents() {
+    ref.invalidate(_studentListProvider);
+    if (_teacherYearId != null && _teacherClassId != null) {
+      ref.invalidate(
+        _teacherStudentsProvider((
+          yearId: _teacherYearId!,
+          classId: _teacherClassId!,
+        )),
+      );
+    }
+  }
 
   List<Student> _filterAndSort(List<Student> students) {
     var filtered = students;
@@ -69,14 +197,62 @@ class _StudentListPageState extends ConsumerState<StudentListPage> {
 
   @override
   Widget build(BuildContext context) {
-    final async = ref.watch(_studentListProvider);
+    final user = ref.watch(authProvider).user;
+    final permHelper = ref.watch(permissionHelperProvider);
+    final isTeacher = permHelper.maybeWhen(
+      data: (perm) => perm?.roleName.toUpperCase() == 'TEACHER',
+      orElse: () => false,
+    );
+    final currentYears = isTeacher
+        ? ref.watch(_currentAcademicYearsProvider)
+        : null;
+    final yearItems = currentYears?.asData?.value;
+    final selectedYearId =
+        _teacherYearId ??
+        (yearItems?.isNotEmpty == true
+            ? yearItems!.first['academicyearid'] as String
+            : null);
+    final classes = isTeacher && selectedYearId != null
+        ? ref.watch(
+            _teacherClassesProvider((
+              userId: user!.userId,
+              yearId: selectedYearId,
+            )),
+          )
+        : null;
+    final classItems = classes?.asData?.value;
+    final selectedClassId =
+        _teacherClassId ??
+        (classItems?.isNotEmpty == true
+            ? classItems!.first['classid'] as String
+            : null);
+    final async = isTeacher
+        ? (selectedYearId != null && selectedClassId != null
+              ? ref.watch(
+                  _teacherStudentsProvider((
+                    yearId: selectedYearId,
+                    classId: selectedClassId,
+                  )),
+                )
+              : const AsyncData<List<Student>>([]))
+        : ref.watch(_studentListProvider);
     final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Students'),
         actions: [
-          HomeButton(roleName: ref.watch(authProvider).user?.roleName ?? ''),
+          Can(
+            permission: 'students:enrol',
+            child: IconButton(
+              icon: const Icon(Icons.person_add_outlined),
+              tooltip: 'Add Student',
+              onPressed: () async {
+                await context.push<bool>('/students/new');
+                if (mounted) _refreshStudents();
+              },
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.file_download),
             tooltip: 'Export to CSV',
@@ -107,10 +283,13 @@ class _StudentListPageState extends ConsumerState<StudentListPage> {
                   )
                   .toList();
 
+              // Capture messenger before async gap to satisfy
+              // use_build_context_synchronously lint.
+              final messenger = ScaffoldMessenger.of(context);
               await ExportService.exportStudentListCsv(students: studentData);
 
               if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
+                messenger.showSnackBar(
                   SnackBar(
                     content: Text(
                       'Exported ${filteredStudents.length} students to CSV',
@@ -127,19 +306,32 @@ class _StudentListPageState extends ConsumerState<StudentListPage> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          await Navigator.push<bool>(
-            context,
-            MaterialPageRoute(builder: (_) => const StudentFormPage()),
-          );
-          if (mounted) ref.invalidate(_studentListProvider);
-        },
-        icon: const Icon(Icons.person_add),
-        label: const Text('Register Student'),
+      floatingActionButton: Can(
+        permission: 'students:enrol',
+        child: FloatingActionButton.extended(
+          onPressed: () async {
+            await context.push<bool>('/students/new');
+            if (mounted) _refreshStudents();
+          },
+          icon: const Icon(Icons.person_add),
+          label: const Text('Register Student'),
+        ),
       ),
       body: Column(
         children: [
+          if (isTeacher)
+            _TeacherStudentFilters(
+              years: currentYears!,
+              classes: classes,
+              selectedYearId: selectedYearId,
+              selectedClassId: selectedClassId,
+              onYearChanged: (yearId) => setState(() {
+                _teacherYearId = yearId;
+                _teacherClassId = null;
+              }),
+              onClassChanged: (classId) =>
+                  setState(() => _teacherClassId = classId),
+            ),
           // FIX 6: Search, filter, and sort controls
           Container(
             padding: const EdgeInsets.all(12),
@@ -149,6 +341,43 @@ class _StudentListPageState extends ConsumerState<StudentListPage> {
             ),
             child: Column(
               children: [
+                // Academic year filter for admins
+                if (!isTeacher)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child:
+                        currentYears?.when(
+                          loading: () => const LinearProgressIndicator(),
+                          error: (error, _) =>
+                              Text('Unable to load academic years: $error'),
+                          data: (items) => DropdownButtonFormField<String>(
+                            initialValue: _adminAcademicYearId,
+                            decoration: const InputDecoration(
+                              labelText: 'Academic Year',
+                              prefixIcon: Icon(Icons.calendar_today),
+                              border: OutlineInputBorder(),
+                            ),
+                            items: [
+                              const DropdownMenuItem<String>(
+                                value: null,
+                                child: Text('All Years'),
+                              ),
+                              ...items.map(
+                                (item) => DropdownMenuItem<String>(
+                                  value: item['academicyearid'] as String,
+                                  child: Text(
+                                    formatAcademicYear(item['academicyear']),
+                                  ),
+                                ),
+                              ),
+                            ],
+                            onChanged: (value) {
+                              setState(() => _adminAcademicYearId = value);
+                            },
+                          ),
+                        ) ??
+                        const SizedBox.shrink(),
+                  ),
                 // Search bar
                 TextField(
                   decoration: InputDecoration(
@@ -173,7 +402,7 @@ class _StudentListPageState extends ConsumerState<StudentListPage> {
                     Expanded(
                       flex: 2,
                       child: DropdownButtonFormField<String>(
-                        value: _statusFilter,
+                        initialValue: _statusFilter,
                         decoration: const InputDecoration(
                           labelText: 'Status',
                           prefixIcon: Icon(Icons.filter_list),
@@ -211,7 +440,7 @@ class _StudentListPageState extends ConsumerState<StudentListPage> {
                     Expanded(
                       flex: 2,
                       child: DropdownButtonFormField<String>(
-                        value: _sortBy,
+                        initialValue: _sortBy,
                         decoration: const InputDecoration(
                           labelText: 'Sort by',
                           prefixIcon: Icon(Icons.sort),
@@ -262,7 +491,8 @@ class _StudentListPageState extends ConsumerState<StudentListPage> {
           // List
           Expanded(
             child: async.when(
-              loading: () => const LoadingState(message: 'Loading students…'),
+              loading: () =>
+                  const SkeletonListLoader(itemCount: 6, itemHeight: 88),
               error: (e, _) => ErrorState(
                 error: e,
                 onRetry: () => ref.invalidate(_studentListProvider),
@@ -271,24 +501,11 @@ class _StudentListPageState extends ConsumerState<StudentListPage> {
                 final filtered = _filterAndSort(students);
 
                 if (students.isEmpty) {
-                  return EmptyState(
+                  return const EmptyState(
                     icon: Icons.people_outline,
                     title: 'No students yet',
                     subtitle:
-                        'Tap the button below to register the first student.',
-                    action: FilledButton.icon(
-                      onPressed: () async {
-                        await Navigator.push<bool>(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const StudentFormPage(),
-                          ),
-                        );
-                        if (mounted) ref.invalidate(_studentListProvider);
-                      },
-                      icon: const Icon(Icons.person_add),
-                      label: const Text('Register Student'),
-                    ),
+                        'Use the Register Student button to add the first student.',
                   );
                 }
 
@@ -356,14 +573,7 @@ class _StudentListPageState extends ConsumerState<StudentListPage> {
                               ),
                               trailing: StatusBadge(s.enrollmentStatus),
                               onTap: () async {
-                                await Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => StudentDetailsPage(
-                                      studentId: s.studentId,
-                                    ),
-                                  ),
-                                );
+                                await context.push('/students/${s.studentId}');
                                 if (mounted) {
                                   ref.invalidate(_studentListProvider);
                                 }

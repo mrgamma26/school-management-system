@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/constants/app_strings.dart';
 import '../../../core/widgets/app_widgets.dart';
 import '../../../widgets/app_shell.dart';
-import '../../../core/navigation/nav_items.dart';
-import '../../authentication/presentation/providers/auth_provider.dart';
 import 'dashboard_scaffold.dart';
 
 class GuardianDashboard extends ConsumerWidget {
@@ -12,9 +11,7 @@ class GuardianDashboard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final user = ref.watch(authProvider).user;
     return AppShell(
-      navItems: getNavItemsForRole(user?.roleName ?? 'GUEST'),
       homeRoute: '/guardian/home',
       body: DashboardBody(
         subtitle: "Monitor your children's progress, fees and school updates",
@@ -30,6 +27,12 @@ class GuardianDashboard extends ConsumerWidget {
                 Icons.trending_up,
                 AppColors.success,
                 () => context.go('/guardian/progress'),
+              ),
+              _T(
+                'Report Cards',
+                Icons.assessment,
+                AppColors.roleAdmin,
+                () => context.go('/guardian/report-card'),
               ),
               _T(
                 'Payment History',
@@ -66,19 +69,19 @@ class GuardianDashboard extends ConsumerWidget {
                 children: [
                   SectionHeader('School Contact', icon: Icons.phone),
                   const SizedBox(height: 8),
-                  const InfoRow(
+                  InfoRow(
                     'Phone',
-                    '+265 999 000 000',
+                    AppStrings.contactPhone,
                     icon: Icons.phone_outlined,
                   ),
-                  const InfoRow(
+                  InfoRow(
                     'Email',
-                    'info@maihalima.ac.mw',
+                    AppStrings.contactEmail,
                     icon: Icons.email_outlined,
                   ),
-                  const InfoRow(
+                  InfoRow(
                     'Address',
-                    'P.O Box 123, Malawi',
+                    AppStrings.contactAddress,
                     icon: Icons.location_on_outlined,
                   ),
                 ],

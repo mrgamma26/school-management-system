@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
+import '../../../../core/errors/app_exception.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/student_repository.dart';
 import '../../users/data/repositories/user_repository.dart';
 import '../../users/domain/models/guardian.dart';
 import '../../authentication/presentation/providers/auth_provider.dart';
 import '../../../core/services/audit_service.dart';
-import '../../../core/widgets/app_widgets.dart';
+import '../../../widgets/skeleton_loader.dart';
 
 /// Manages the guardian links for one student.
 class GuardianLinkPage extends ConsumerStatefulWidget {
@@ -48,7 +49,7 @@ class _GuardianLinkPageState extends ConsumerState<GuardianLinkPage> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+      if (mounted) setState(() => _error = friendlyError(e));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -174,19 +175,14 @@ class _GuardianLinkPageState extends ConsumerState<GuardianLinkPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Guardian Links'),
-        actions: [
-          HomeButton(roleName: ref.watch(authProvider).user?.roleName ?? ''),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Guardian Links')),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _linkGuardian,
         icon: const Icon(Icons.add),
         label: const Text('Link Guardian'),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const SkeletonListLoader(itemCount: 3, itemHeight: 88)
           : _error != null
           ? Center(child: Text(_error!))
           : _links.isEmpty

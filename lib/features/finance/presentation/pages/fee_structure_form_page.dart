@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
+import '../../../../core/errors/app_exception.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/finance_repository.dart';
 import '../../domain/models/fee_structure.dart';
 import '../../../academics/data/academic_repository.dart';
-import '../../../academics/domain/models/class_model.dart';
-import '../../../authentication/presentation/providers/auth_provider.dart';
-import '../../../../core/widgets/app_widgets.dart';
+import '../../../academics/domain/models/academic_year.dart';
 
 /// Create or edit a fee structure entry.
 class FeeStructureFormPage extends ConsumerStatefulWidget {
@@ -31,8 +30,8 @@ class _FeeStructureFormPageState extends ConsumerState<FeeStructureFormPage> {
   late final TextEditingController _feeTypeCtrl;
   late final TextEditingController _amountCtrl;
 
-  List<ClassModel> _classes = [];
-  String? _selectedClassId;
+  List<AcademicYear> _academicYears = [];
+  String? _selectedAcademicYearId;
   bool _loading = false;
   String? _error;
 
@@ -46,8 +45,8 @@ class _FeeStructureFormPageState extends ConsumerState<FeeStructureFormPage> {
     _amountCtrl = TextEditingController(
       text: e != null ? e.amount.toStringAsFixed(2) : '',
     );
-    _selectedClassId = e?.classId;
-    _loadClasses();
+    _selectedAcademicYearId = e?.academicYearId;
+    _loadAcademicYears();
   }
 
   @override
@@ -57,17 +56,23 @@ class _FeeStructureFormPageState extends ConsumerState<FeeStructureFormPage> {
     super.dispose();
   }
 
-  Future<void> _loadClasses() async {
+  Future<void> _loadAcademicYears() async {
     try {
-      final classes = await _academicRepo.listClasses();
-      if (mounted) setState(() => _classes = classes);
-    } catch (_) {}
+      final years = await _academicRepo.listAcademicYears();
+      if (mounted) setState(() => _academicYears = years);
+    } catch (e) {
+      if (mounted) {
+        setState(
+          () => _error = 'Failed to load academic years. Please try again.',
+        );
+      }
+    }
   }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_selectedClassId == null && !_isEdit) {
-      setState(() => _error = 'Please select a class.');
+    if (_selectedAcademicYearId == null) {
+      setState(() => _error = 'Please select an academic year and term.');
       return;
     }
 
@@ -84,13 +89,19 @@ class _FeeStructureFormPageState extends ConsumerState<FeeStructureFormPage> {
 
     try {
       if (_isEdit) {
-        await _repo.updateFeeStructure(widget.existing!.feeStructureId, amount);
+        await _repo.updateFeeStructure(
+          FeeStructure(
+            feeStructureId: widget.existing!.feeStructureId,
+            academicYearId: _selectedAcademicYearId!,
+            feeType: _feeTypeCtrl.text.trim(),
+            amount: amount,
+          ),
+        );
       } else {
         await _repo.createFeeStructure(
           FeeStructure(
             feeStructureId: '',
-            classId: _selectedClassId!,
-            academicYearId: widget.academicYearId,
+            academicYearId: _selectedAcademicYearId!,
             feeType: _feeTypeCtrl.text.trim(),
             amount: amount,
           ),
@@ -98,7 +109,7 @@ class _FeeStructureFormPageState extends ConsumerState<FeeStructureFormPage> {
       }
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
-      setState(() => _error = e.toString());
+      setState(() => _error = friendlyError(e));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -106,43 +117,43 @@ class _FeeStructureFormPageState extends ConsumerState<FeeStructureFormPage> {
 
   @override
   Widget build(BuildContext context) {
-    final role = ref.watch(authProvider).user?.roleName ?? '';
-
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_isEdit ? 'Edit Fee' : 'Add Fee Structure'),
-        actions: [HomeButton(roleName: role)],
-      ),
+      appBar: AppBar(title: Text(_isEdit ? 'Edit Fee' : 'Add Fee Structure')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Form(
           key: _formKey,
           child: Column(
             children: [
-              if (!_isEdit && _classes.isNotEmpty)
+              if (_academicYears.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
                   child: DropdownButtonFormField<String>(
-                    value: _selectedClassId,
-                    decoration: const InputDecoration(labelText: 'Class'),
-                    items: _classes
+                    initialValue: _selectedAcademicYearId,
+                    decoration: const InputDecoration(
+                      labelText: 'Academic Year and Term',
+                    ),
+                    items: _academicYears
                         .map(
-                          (c) => DropdownMenuItem(
-                            value: c.classId,
-                            child: Text(c.className),
+                          (year) => DropdownMenuItem(
+                            value: year.id,
+                            child: Text(
+                              '${formatAcademicYear(year.year)} · ${year.term}',
+                            ),
                           ),
                         )
                         .toList(),
-                    onChanged: (v) => setState(() => _selectedClassId = v),
-                    validator: (v) =>
-                        v == null ? 'Please select a class.' : null,
+                    onChanged: (v) =>
+                        setState(() => _selectedAcademicYearId = v),
+                    validator: (v) => v == null
+                        ? 'Please select an academic year and term.'
+                        : null,
                   ),
                 ),
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: TextFormField(
                   controller: _feeTypeCtrl,
-                  enabled: !_isEdit,
                   decoration: const InputDecoration(labelText: 'Fee Type'),
                   validator: (v) => (v == null || v.trim().isEmpty)
                       ? 'Fee type is required.'

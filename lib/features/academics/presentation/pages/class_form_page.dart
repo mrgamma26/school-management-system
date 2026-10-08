@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../data/academic_repository.dart';
 import '../../domain/models/class_model.dart';
-import '../../../authentication/presentation/providers/auth_provider.dart';
-import '../../../../core/widgets/app_widgets.dart';
 
 /// Create or edit a class.
 class ClassFormPage extends ConsumerStatefulWidget {
@@ -59,7 +58,7 @@ class _ClassFormPageState extends ConsumerState<ClassFormPage> {
         await _repo.createClass(_nameCtrl.text.trim(), _form);
       }
 
-      if (mounted) Navigator.pop(context, true);
+      if (mounted) context.go('/academics/classes');
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
@@ -69,30 +68,14 @@ class _ClassFormPageState extends ConsumerState<ClassFormPage> {
 
   @override
   Widget build(BuildContext context) {
-    final role = ref.watch(authProvider).user?.roleName ?? '';
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_isEdit ? 'Edit Class' : 'Create Class'),
-        actions: [HomeButton(roleName: role)],
-      ),
+      appBar: AppBar(title: Text(_isEdit ? 'Edit Class' : 'Create Class')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Form(
           key: _formKey,
           child: Column(
             children: [
-              TextFormField(
-                controller: _nameCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Class Name',
-                  hintText: 'e.g., Form 1A, Form 2B',
-                ),
-                validator: (v) => (v == null || v.trim().isEmpty)
-                    ? 'Class name is required.'
-                    : null,
-              ),
-              const SizedBox(height: 16),
-
               // Form Level Selection
               DropdownButtonFormField<String>(
                 initialValue: _form,
@@ -107,7 +90,31 @@ class _ClassFormPageState extends ConsumerState<ClassFormPage> {
                   DropdownMenuItem(value: 'FORM_3', child: Text('Form 3')),
                   DropdownMenuItem(value: 'FORM_4', child: Text('Form 4')),
                 ],
-                onChanged: (v) => setState(() => _form = v),
+                onChanged: (v) {
+                  setState(() {
+                    _form = v;
+                    if (!_isEdit && v != null) {
+                      final prefix = v
+                          .replaceFirst('_', ' ')
+                          .replaceAll('FORM', 'Form');
+                      _nameCtrl.text = '$prefix ';
+                      _nameCtrl.selection = TextSelection.collapsed(
+                        offset: _nameCtrl.text.length,
+                      );
+                    }
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _nameCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Class Name',
+                  hintText: 'Choose a form first, then add the class name',
+                ),
+                validator: (v) => (v == null || v.trim().isEmpty)
+                    ? 'Class name is required.'
+                    : null,
               ),
 
               if (_error != null) ...[

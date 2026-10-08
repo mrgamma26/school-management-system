@@ -2,40 +2,41 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../theme/app_tokens.dart';
+import '../core/constants/app_strings.dart';
 import '../features/authentication/presentation/providers/auth_provider.dart';
+import '../core/navigation/role_menus.dart';
 
-// Nav item model
+// ---------------------------------------------------------------------------
+// NavItem — kept for backward-compat with nav_items.dart imports
+// ---------------------------------------------------------------------------
 
 class NavItem {
   final String label;
   final IconData icon;
   final IconData activeIcon;
   final String route;
+  final String? requiredPermission;
 
   const NavItem({
     required this.label,
     required this.icon,
     required this.activeIcon,
     required this.route,
+    this.requiredPermission,
   });
 }
 
-// Sidebar collapse widths
-
-const double _kSidebarExpanded = 220;
-const double _kSidebarCollapsed = 64;
-
-// AppShell
+// ---------------------------------------------------------------------------
+// AppShell — single Scaffold with a Drawer that is CLOSED by default
+// ---------------------------------------------------------------------------
 
 class AppShell extends ConsumerWidget {
-  final List<NavItem> navItems;
   final Widget body;
   final String homeRoute;
   final PreferredSizeWidget? appBar;
 
   const AppShell({
     super.key,
-    required this.navItems,
     required this.body,
     required this.homeRoute,
     this.appBar,
@@ -43,382 +44,274 @@ class AppShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final wide = MediaQuery.sizeOf(context).width >= Breakpoints.tablet;
-    return wide
-        ? _WideLayout(
-            navItems: navItems,
-            body: body,
-            homeRoute: homeRoute,
-            appBar: appBar,
-          )
-        : _NarrowLayout(
-            navItems: navItems,
-            body: body,
-            homeRoute: homeRoute,
-            appBar: appBar,
-          );
-  }
-}
+    final user = ref.watch(authProvider).user;
+    final granted = ref
+        .watch(permissionsProvider)
+        .maybeWhen(data: (d) => d, orElse: () => const <String>{});
+    final nodes = menuForRole(user?.roleName ?? '', granted);
+    final loc = GoRouterState.of(context).matchedLocation;
+    final onHome = loc == homeRoute || loc.endsWith('/home');
 
-// Wide layout (sidebar)
-
-class _WideLayout extends StatefulWidget {
-  final List<NavItem> navItems;
-  final Widget body;
-  final String homeRoute;
-  final PreferredSizeWidget? appBar;
-
-  const _WideLayout({
-    required this.navItems,
-    required this.body,
-    required this.homeRoute,
-    this.appBar,
-  });
-
-  @override
-  State<_WideLayout> createState() => _WideLayoutState();
-}
-
-class _WideLayoutState extends State<_WideLayout>
-    with SingleTickerProviderStateMixin {
-  bool _collapsed = false;
-
-  late final AnimationController _animCtrl;
-  late final Animation<double> _widthAnim;
-
-  @override
-  void initState() {
-    super.initState();
-    _animCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 220),
-    );
-    _widthAnim = Tween<double>(
-      begin: _kSidebarExpanded,
-      end: _kSidebarCollapsed,
-    ).animate(CurvedAnimation(parent: _animCtrl, curve: Curves.easeInOut));
-  }
-
-  @override
-  void dispose() {
-    _animCtrl.dispose();
-    super.dispose();
-  }
-
-  void _toggle() {
-    setState(() => _collapsed = !_collapsed);
-    _collapsed ? _animCtrl.forward() : _animCtrl.reverse();
-  }
-
-  @override
-  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: Row(
-        children: [
-          // Animated sidebar
-          AnimatedBuilder(
-            animation: _widthAnim,
-            builder: (context, child) =>
-                SizedBox(width: _widthAnim.value, child: child),
-            child: _Sidebar(
-              navItems: widget.navItems,
-              homeRoute: widget.homeRoute,
-              collapsed: _collapsed,
-              onToggle: _toggle,
-            ),
-          ),
-          // Content
-          Expanded(
-            child: Column(
+      appBar:
+          appBar ??
+          AppBar(
+            toolbarHeight: 52,
+            backgroundColor: AppColors.surface,
+            elevation: 0,
+            scrolledUnderElevation: 1,
+            // Flutter auto-inserts the hamburger leading icon when drawer != null
+            title: Row(
               children: [
-                if (widget.appBar != null)
-                  Material(
-                    color: AppColors.background,
-                    elevation: 0,
-                    child: widget.appBar!,
+                const _LogoIcon(size: 26),
+                const SizedBox(width: Sp.sm),
+                Flexible(
+                  child: Text(
+                    AppStrings.appName,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontFamily: AppText.fontHeading,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textPrimary,
+                    ),
                   ),
-                Expanded(child: widget.body),
-                const _WebFooter(),
+                ),
               ],
             ),
+            actions: [
+              if (!onHome)
+                IconButton(
+                  icon: const Icon(Icons.home_outlined),
+                  tooltip: 'Home',
+                  onPressed: () => context.go(homeRoute),
+                ),
+              IconButton(
+                icon: const Icon(Icons.logout_outlined),
+                tooltip: 'Sign out',
+                onPressed: () => ref.read(authProvider.notifier).signOut(),
+              ),
+            ],
           ),
-        ],
-      ),
-    );
-  }
-}
-
-// Narrow layout (bottom nav)
-
-class _NarrowLayout extends ConsumerWidget {
-  final List<NavItem> navItems;
-  final Widget body;
-  final String homeRoute;
-  final PreferredSizeWidget? appBar;
-
-  const _NarrowLayout({
-    required this.navItems,
-    required this.body,
-    required this.homeRoute,
-    this.appBar,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final loc = GoRouterState.of(context).matchedLocation;
-
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: appBar ?? _defaultAppBar(context, ref, homeRoute),
-      drawer: _SideDrawer(navItems: navItems, homeRoute: homeRoute),
+      drawer: _MenuDrawer(nodes: nodes, homeRoute: homeRoute),
       body: body,
-      bottomNavigationBar: _BottomNav(navItems: navItems, currentRoute: loc),
-    );
-  }
-
-  PreferredSizeWidget _defaultAppBar(
-    BuildContext ctx,
-    WidgetRef ref,
-    String home,
-  ) {
-    return AppBar(
-      backgroundColor: AppColors.background,
-      elevation: 0,
-      title: _Logo(),
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.home_outlined),
-          tooltip: 'Home',
-          onPressed: () => ctx.go(home),
-        ),
-        IconButton(
-          icon: const Icon(Icons.logout_outlined),
-          tooltip: 'Sign out',
-          onPressed: () => ref.read(authProvider.notifier).signOut(),
-        ),
-      ],
+      bottomNavigationBar:
+          MediaQuery.sizeOf(context).width >= Breakpoints.tablet
+          ? const _WebFooter()
+          : null,
     );
   }
 }
 
-// Sidebar
+// ---------------------------------------------------------------------------
+// Menu drawer — closed by default, groups collapsed until tapped
+// ---------------------------------------------------------------------------
 
-class _Sidebar extends ConsumerWidget {
-  final List<NavItem> navItems;
+class _MenuDrawer extends ConsumerWidget {
+  final List<MenuNode> nodes;
   final String homeRoute;
-  final bool collapsed;
-  final VoidCallback onToggle;
 
-  const _Sidebar({
-    required this.navItems,
-    required this.homeRoute,
-    required this.collapsed,
-    required this.onToggle,
-  });
+  const _MenuDrawer({required this.nodes, required this.homeRoute});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authProvider).user;
     final loc = GoRouterState.of(context).matchedLocation;
 
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: AppGradients.sidebar,
-        boxShadow: AppShadows.sidebar,
-      ),
+    return Drawer(
       child: SafeArea(
         child: Column(
           children: [
-            // Logo + collapse toggle
-            Padding(
-              padding: EdgeInsets.fromLTRB(
-                collapsed ? Sp.sm : Sp.xl,
-                Sp.lg,
-                collapsed ? Sp.sm : Sp.md,
-                Sp.md,
-              ),
-              child: Row(
+            // ── Header ────────────────────────────────────────────
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(Sp.lg, Sp.lg, Sp.lg, Sp.xl),
+              decoration: const BoxDecoration(gradient: AppGradients.sidebar),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (!collapsed) ...[
-                    _LogoIcon(size: 32),
-                    const SizedBox(width: Sp.sm),
-                    const Expanded(
-                      child: Text(
-                        'Mai Halima',
-                        style: TextStyle(
-                          fontFamily: AppText.fontHeading,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ] else
-                    const Spacer(),
-                  // Toggle button
-                  Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      borderRadius: Radii.smBr,
-                      onTap: onToggle,
-                      child: Padding(
-                        padding: const EdgeInsets.all(6),
-                        child: Icon(
-                          collapsed ? Icons.chevron_right : Icons.chevron_left,
-                          color: Colors.white70,
-                          size: 20,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // User chip (hidden when collapsed)
-            if (!collapsed && user != null)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: Sp.lg),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: Sp.md,
-                    vertical: Sp.sm,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.12),
-                    borderRadius: Radii.mdBr,
-                  ),
-                  child: Row(
+                  Row(
                     children: [
-                      CircleAvatar(
-                        radius: 14,
-                        backgroundColor: Colors.white.withValues(alpha: 0.25),
+                      const _LogoIcon(size: 32),
+                      const SizedBox(width: Sp.sm),
+                      const Expanded(
                         child: Text(
-                          user.username.substring(0, 1).toUpperCase(),
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 12,
+                          AppStrings.appName,
+                          style: TextStyle(
+                            fontFamily: AppText.fontHeading,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
                             color: Colors.white,
                           ),
-                        ),
-                      ),
-                      const SizedBox(width: Sp.sm),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              user.username,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 1,
-                            ),
-                            Text(
-                              _roleFriendly(user.roleName),
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.7),
-                                fontSize: 10,
-                              ),
-                            ),
-                          ],
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
                   ),
-                ),
-              ),
-
-            // Collapsed: avatar only
-            if (collapsed && user != null)
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: Sp.sm,
-                  vertical: Sp.sm,
-                ),
-                child: CircleAvatar(
-                  radius: 16,
-                  backgroundColor: Colors.white.withValues(alpha: 0.2),
-                  child: Text(
-                    user.username.substring(0, 1).toUpperCase(),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12,
-                      color: Colors.white,
+                  if (user != null) ...[
+                    const SizedBox(height: Sp.md),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: Sp.md,
+                        vertical: Sp.sm,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.12),
+                        borderRadius: Radii.mdBr,
+                      ),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 16,
+                            backgroundColor: Colors.white.withValues(
+                              alpha: 0.25,
+                            ),
+                            child: Text(
+                              user.username.isEmpty
+                                  ? '?'
+                                  : user.username[0].toUpperCase(),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: Sp.sm),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  user.username,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                ),
+                                Text(
+                                  _roleFriendly(user.roleName),
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.7),
+                                    fontSize: 10,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ),
+                  ],
+                ],
               ),
-
-            const SizedBox(height: Sp.sm),
-
-            // Home item
-            _SidebarItem(
-              icon: Icons.home_outlined,
-              activeIcon: Icons.home,
-              label: 'Home',
-              isActive: loc == homeRoute,
-              onTap: () => context.go(homeRoute),
-              collapsed: collapsed,
             ),
 
-            Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: collapsed ? Sp.sm : Sp.xl,
-                vertical: Sp.xs,
-              ),
-              child: const Divider(color: Colors.white24, height: 1),
-            ),
-
-            // Nav items
+            // ── Nav items ─────────────────────────────────────────
             Expanded(
               child: ListView(
                 padding: EdgeInsets.zero,
-                children: navItems.map((item) {
-                  final active = loc.startsWith(item.route);
-                  return _SidebarItem(
-                    icon: item.icon,
-                    activeIcon: item.activeIcon,
-                    label: item.label,
-                    isActive: active,
-                    onTap: () => context.go(item.route),
-                    collapsed: collapsed,
-                  );
-                }).toList(),
+                children: [
+                  // Dashboard home link
+                  _DrawerLink(
+                    icon: Icons.home_outlined,
+                    label: 'Dashboard',
+                    route: homeRoute,
+                    currentLoc: loc,
+                    onNav: () {
+                      Navigator.of(context).pop();
+                      context.go(homeRoute);
+                    },
+                  ),
+                  const Divider(height: 1, indent: Sp.lg, endIndent: Sp.lg),
+                  ...nodes.map((n) => _buildNode(context, n, loc)),
+                ],
               ),
             ),
 
-            Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: collapsed ? Sp.sm : Sp.xl,
-                vertical: Sp.xs,
+            // ── Sign out ──────────────────────────────────────────
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.logout_outlined, color: Colors.red),
+              title: const Text(
+                'Sign Out',
+                style: TextStyle(
+                  color: Colors.red,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-              child: const Divider(color: Colors.white24, height: 1),
+              onTap: () {
+                Navigator.of(context).pop();
+                ref.read(authProvider.notifier).signOut();
+              },
             ),
-
-            // Logout
-            _SidebarItem(
-              icon: Icons.logout_outlined,
-              activeIcon: Icons.logout,
-              label: 'Sign Out',
-              isActive: false,
-              onTap: () => ref.read(authProvider.notifier).signOut(),
-              danger: true,
-              collapsed: collapsed,
-            ),
-            const SizedBox(height: Sp.lg),
+            const SizedBox(height: Sp.sm),
           ],
         ),
       ),
     );
   }
 
-  String _roleFriendly(String r) => r
+  Widget _buildNode(BuildContext context, MenuNode node, String loc) {
+    if (!node.isGroup) {
+      return _DrawerLink(
+        icon: node.icon,
+        label: node.label,
+        route: node.route!,
+        currentLoc: loc,
+        onNav: () {
+          Navigator.of(context).pop();
+          context.go(node.route!);
+        },
+      );
+    }
+
+    // Group — check if any child is active so we can auto-expand
+    final hasActive = _childActive(node, loc);
+
+    return Theme(
+      // Remove default ExpansionTile divider lines
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        key: PageStorageKey<String>(node.label),
+        initiallyExpanded: hasActive,
+        leading: Icon(node.icon, size: 20, color: AppColors.textSecondary),
+        title: Text(
+          node.label,
+          style: const TextStyle(
+            fontFamily: AppText.fontBody,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        tilePadding: const EdgeInsets.symmetric(horizontal: Sp.lg, vertical: 0),
+        childrenPadding: EdgeInsets.zero,
+        shape: const Border(),
+        collapsedShape: const Border(),
+        children: node.children
+            .map((c) => _buildNode(context, c, loc))
+            .toList(),
+      ),
+    );
+  }
+
+  bool _childActive(MenuNode node, String loc) {
+    for (final c in node.children) {
+      if (c.isGroup) {
+        if (_childActive(c, loc)) return true;
+      } else {
+        final r = c.route!;
+        if (loc == r || loc.startsWith('$r/')) return true;
+      }
+    }
+    return false;
+  }
+
+  static String _roleFriendly(String r) => r
       .replaceAll('_', ' ')
       .split(' ')
       .map(
@@ -428,211 +321,62 @@ class _Sidebar extends ConsumerWidget {
       .join(' ');
 }
 
-// Sidebar item
+// ---------------------------------------------------------------------------
+// Single nav link inside the drawer
+// ---------------------------------------------------------------------------
 
-class _SidebarItem extends StatelessWidget {
+class _DrawerLink extends StatelessWidget {
   final IconData icon;
-  final IconData activeIcon;
   final String label;
-  final bool isActive;
-  final VoidCallback onTap;
-  final bool danger;
-  final bool collapsed;
+  final String route;
+  final String currentLoc;
+  final VoidCallback onNav;
 
-  const _SidebarItem({
+  const _DrawerLink({
     required this.icon,
-    required this.activeIcon,
     required this.label,
-    required this.isActive,
-    required this.onTap,
-    required this.collapsed,
-    this.danger = false,
+    required this.route,
+    required this.currentLoc,
+    required this.onNav,
   });
 
   @override
   Widget build(BuildContext context) {
-    final iconColor = danger
-        ? Colors.redAccent.shade100
-        : isActive
-        ? Colors.white
-        : Colors.white.withValues(alpha: 0.65);
-
-    // Collapsed: icon-only with tooltip
-    if (collapsed) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: Sp.xs, vertical: 2),
-        child: Tooltip(
-          message: label,
-          preferBelow: false,
-          child: Material(
-            color: isActive
-                ? Colors.white.withValues(alpha: 0.18)
-                : Colors.transparent,
-            borderRadius: Radii.smBr,
-            child: InkWell(
-              onTap: onTap,
-              borderRadius: Radii.smBr,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  vertical: Sp.sm + 2,
-                  horizontal: Sp.sm,
-                ),
-                child: Center(
-                  child: Icon(
-                    isActive ? activeIcon : icon,
-                    size: 20,
-                    color: iconColor,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    // Expanded: icon + label
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: Sp.md, vertical: 2),
-      child: Material(
-        color: isActive
-            ? Colors.white.withValues(alpha: 0.18)
-            : Colors.transparent,
-        borderRadius: Radii.mdBr,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: Radii.mdBr,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: Sp.md,
-              vertical: Sp.sm + 2,
-            ),
-            child: Row(
-              children: [
-                Icon(isActive ? activeIcon : icon, size: 20, color: iconColor),
-                const SizedBox(width: Sp.md),
-                Expanded(
-                  child: Text(
-                    label,
-                    style: TextStyle(
-                      fontFamily: AppText.fontBody,
-                      fontSize: 14,
-                      fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
-                      color: iconColor,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                if (isActive)
-                  Container(
-                    width: 4,
-                    height: 4,
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-              ],
-            ),
-          ),
+    final isStudentRegistration =
+        currentLoc == '/students/new' ||
+        currentLoc.startsWith('/students/new/');
+    final active =
+        (currentLoc == route || currentLoc.startsWith('$route/')) &&
+        !(route == '/students' && isStudentRegistration);
+    return ListTile(
+      selected: active,
+      selectedTileColor: AppColors.primary.withValues(alpha: 0.08),
+      leading: Icon(
+        icon,
+        size: 20,
+        color: active ? AppColors.primary : AppColors.textSecondary,
+      ),
+      title: Text(
+        label,
+        style: TextStyle(
+          fontFamily: AppText.fontBody,
+          fontSize: 14,
+          fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+          color: active ? AppColors.primary : AppColors.textPrimary,
         ),
       ),
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: Sp.xl,
+        vertical: 0,
+      ),
+      onTap: onNav,
     );
   }
 }
 
-// Side drawer (narrow fallback)
-
-class _SideDrawer extends ConsumerWidget {
-  final List<NavItem> navItems;
-  final String homeRoute;
-
-  const _SideDrawer({required this.navItems, required this.homeRoute});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Drawer(
-      backgroundColor: AppColors.primary,
-      child: _Sidebar(
-        navItems: navItems,
-        homeRoute: homeRoute,
-        collapsed: false,
-        onToggle: () => Navigator.of(context).pop(),
-      ),
-    );
-  }
-}
-
-// Bottom nav (narrow)
-
-class _BottomNav extends StatelessWidget {
-  final List<NavItem> navItems;
-  final String currentRoute;
-
-  const _BottomNav({required this.navItems, required this.currentRoute});
-
-  @override
-  Widget build(BuildContext context) {
-    final visible = navItems.take(4).toList();
-
-    return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        boxShadow: [
-          BoxShadow(
-            color: Color(0x144F5FEE),
-            blurRadius: 20,
-            offset: Offset(0, -4),
-          ),
-        ],
-      ),
-      child: SafeArea(
-        child: SizedBox(
-          height: 60,
-          child: Row(
-            children: visible.map((item) {
-              final active = currentRoute.startsWith(item.route);
-              return Expanded(
-                child: InkWell(
-                  onTap: () => context.go(item.route),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        active ? item.activeIcon : item.icon,
-                        size: 22,
-                        color: active
-                            ? AppColors.primary
-                            : AppColors.textDisabled,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        item.label,
-                        style: TextStyle(
-                          fontFamily: AppText.fontBody,
-                          fontSize: 9,
-                          fontWeight: active
-                              ? FontWeight.w700
-                              : FontWeight.w500,
-                          color: active
-                              ? AppColors.primary
-                              : AppColors.textDisabled,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// Web footer
+// ---------------------------------------------------------------------------
+// Web footer (wide screens only)
+// ---------------------------------------------------------------------------
 
 class _WebFooter extends StatelessWidget {
   const _WebFooter();
@@ -648,11 +392,11 @@ class _WebFooter extends StatelessWidget {
       ),
       child: Row(
         children: [
-          _LogoIcon(size: 18),
+          const _LogoIcon(size: 18),
           const SizedBox(width: Sp.sm),
-          const Text(
-            'Mai Halima School Management',
-            style: TextStyle(
+          Text(
+            AppStrings.appName,
+            style: const TextStyle(
               fontFamily: AppText.fontHeading,
               fontSize: 12,
               fontWeight: FontWeight.w700,
@@ -661,7 +405,7 @@ class _WebFooter extends StatelessWidget {
           ),
           const Spacer(),
           Text(
-            '© ${DateTime.now().year} Mai Halima School - All rights reserved',
+            '© ${DateTime.now().year} ${AppStrings.appName} — ${AppStrings.copyright}',
             style: const TextStyle(
               fontFamily: AppText.fontBody,
               fontSize: 11,
@@ -674,29 +418,9 @@ class _WebFooter extends StatelessWidget {
   }
 }
 
-// Logo variants
-
-class _Logo extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _LogoIcon(size: 28),
-        const SizedBox(width: Sp.sm),
-        const Text(
-          'Mai Halima',
-          style: TextStyle(
-            fontFamily: AppText.fontHeading,
-            fontSize: 17,
-            fontWeight: FontWeight.w800,
-            color: AppColors.textPrimary,
-          ),
-        ),
-      ],
-    );
-  }
-}
+// ---------------------------------------------------------------------------
+// Logo icon (reusable across shell and drawer header)
+// ---------------------------------------------------------------------------
 
 class _LogoIcon extends StatelessWidget {
   final double size;
@@ -714,7 +438,7 @@ class _LogoIcon extends StatelessWidget {
       ),
       child: Center(
         child: Text(
-          'M',
+          AppStrings.appInitial,
           style: TextStyle(
             fontFamily: AppText.fontHeading,
             fontSize: size * 0.55,

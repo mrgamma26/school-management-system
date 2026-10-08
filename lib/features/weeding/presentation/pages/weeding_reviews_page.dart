@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/widgets/app_widgets.dart';
 import '../../data/weeding_repository.dart';
 import '../../../../core/database/supabase_client.dart';
+import '../../../../core/errors/app_exception.dart';
+import '../../../../core/auth/permission_helper.dart';
 import '../../../../core/services/audit_service.dart';
 import '../../../authentication/presentation/providers/auth_provider.dart';
 
@@ -42,8 +43,11 @@ class _WeedingReviewsPageState extends ConsumerState<WeedingReviewsPage> {
   String _filter = 'ALL'; // ALL | PENDING | WEED_OUT | RETAIN
 
   bool get _canDecide {
-    final r = ref.read(authProvider).user?.roleName.toUpperCase() ?? '';
-    return r == 'HEAD_TEACHER' || r == 'SYSTEM_ADMIN' || r == 'SUPER_USER';
+    final permHelper = ref.watch(permissionHelperProvider);
+    return permHelper.maybeWhen(
+      data: (perm) => perm?.canDecideWeeding ?? false,
+      orElse: () => false,
+    );
   }
 
   @override
@@ -54,7 +58,6 @@ class _WeedingReviewsPageState extends ConsumerState<WeedingReviewsPage> {
       appBar: AppBar(
         title: const Text('Weeding Reviews'),
         actions: [
-          HomeButton(roleName: ref.watch(authProvider).user?.roleName ?? ''),
           if (_yearId != null && _canDecide)
             TextButton.icon(
               onPressed: () => _showFlagDialog(),
@@ -65,7 +68,7 @@ class _WeedingReviewsPageState extends ConsumerState<WeedingReviewsPage> {
       ),
       body: yearsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
+        error: (e, _) => Center(child: Text(friendlyError(e))),
         data: (years) => Column(
           children: [
             // Year selector
@@ -208,7 +211,7 @@ class _WeedingList extends ConsumerWidget {
 
     return async.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Error: $e')),
+      error: (e, _) => Center(child: Text(friendlyError(e))),
       data: (reviews) {
         final filtered = filter == 'ALL'
             ? reviews

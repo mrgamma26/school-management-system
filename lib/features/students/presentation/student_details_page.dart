@@ -1,22 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/errors/app_exception.dart';
 import 'package:go_router/go_router.dart';
+import '../../authentication/presentation/providers/auth_provider.dart';
 import '../data/student_repository.dart';
 import '../domain/student.dart';
-import 'student_form_page.dart';
-import 'guardian_link_page.dart';
-import 'class_history_page.dart';
+import '../../../widgets/skeleton_loader.dart';
 
 /// Shows full student details with navigation to edit, guardian links
 /// and class history.
-class StudentDetailsPage extends StatefulWidget {
+class StudentDetailsPage extends ConsumerStatefulWidget {
   final String studentId;
   const StudentDetailsPage({required this.studentId, super.key});
 
   @override
-  State<StudentDetailsPage> createState() => _StudentDetailsPageState();
+  ConsumerState<StudentDetailsPage> createState() => _StudentDetailsPageState();
 }
 
-class _StudentDetailsPageState extends State<StudentDetailsPage> {
+class _StudentDetailsPageState extends ConsumerState<StudentDetailsPage> {
   final _repo = StudentRepository();
   Student? _student;
   bool _loading = true;
@@ -37,7 +38,7 @@ class _StudentDetailsPageState extends State<StudentDetailsPage> {
       final s = await _repo.getStudent(widget.studentId);
       if (mounted) setState(() => _student = s);
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+      if (mounted) setState(() => _error = friendlyError(e));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -46,7 +47,9 @@ class _StudentDetailsPageState extends State<StudentDetailsPage> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(
+        body: SkeletonListLoader(itemCount: 4, itemHeight: 100),
+      );
     }
     if (_error != null) {
       return Scaffold(
@@ -65,6 +68,8 @@ class _StudentDetailsPageState extends State<StudentDetailsPage> {
     }
 
     final s = _student!;
+    final role = ref.watch(authProvider).user?.roleName.trim().toUpperCase();
+    final canManageAccounts = role == 'ACCOUNTANT' || role == 'SUPER_USER';
 
     return Scaffold(
       appBar: AppBar(
@@ -79,10 +84,7 @@ class _StudentDetailsPageState extends State<StudentDetailsPage> {
             icon: const Icon(Icons.edit),
             tooltip: 'Edit',
             onPressed: () async {
-              await Navigator.push<bool>(
-                context,
-                MaterialPageRoute(builder: (_) => StudentFormPage(existing: s)),
-              );
+              await context.push<bool>('/students/${s.studentId}/edit');
               _load();
             },
           ),
@@ -93,27 +95,33 @@ class _StudentDetailsPageState extends State<StudentDetailsPage> {
         children: [
           _infoCard(s),
           const SizedBox(height: 12),
+          if (canManageAccounts)
+            _actionTile(
+              context,
+              icon: Icons.account_balance_wallet_outlined,
+              title: 'Student Account & Payments',
+              onTap: () => context.go(
+                '/finance/students/${s.studentId}/account'
+                '?name=${Uri.encodeComponent(s.fullName)}',
+              ),
+            ),
           _actionTile(
             context,
             icon: Icons.family_restroom,
-            title: 'Guardian Links',
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => GuardianLinkPage(studentId: s.studentId),
-              ),
-            ),
+            title: 'Manage Guardians',
+            onTap: () => context.go('/students/${s.studentId}/link-guardian'),
+          ),
+          _actionTile(
+            context,
+            icon: Icons.menu_book_outlined,
+            title: 'Manage Subjects',
+            onTap: () => context.go('/students/${s.studentId}/subjects'),
           ),
           _actionTile(
             context,
             icon: Icons.history_edu,
             title: 'Class History',
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => ClassHistoryPage(studentId: s.studentId),
-              ),
-            ),
+            onTap: () => context.go('/students/${s.studentId}/class-history'),
           ),
         ],
       ),

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/widgets/app_widgets.dart';
 import '../../../../core/database/supabase_client.dart';
 import '../../../authentication/presentation/providers/auth_provider.dart';
 
@@ -31,7 +30,8 @@ final _studentPaymentsProvider =
       final rows = await supabase
           .from('payment')
           .select(
-            'paymentid, amount, paymentdate, method, receiptnumber, '
+            'paymentid, amount, paymentdate, method, receiptnumber, referencenumber, '
+            'paymentchannel(displayname, providername, maskedidentifier), '
             'feestructure(feetype, class(classroomname))',
           )
           .eq('studentid', studentId)
@@ -60,12 +60,7 @@ class _GuardianPaymentHistoryPageState
     final childrenAsync = ref.watch(_guardianChildrenProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Payment History'),
-        actions: [
-          HomeButton(roleName: ref.watch(authProvider).user?.roleName ?? ''),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Payment History')),
       body: childrenAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Error loading children: $e')),
@@ -80,37 +75,62 @@ class _GuardianPaymentHistoryPageState
               ),
             );
           }
+          final onlyStudent = children.length == 1
+              ? children.single['student'] as Map<String, dynamic>
+              : null;
+          if (onlyStudent != null && _selectedStudentId == null) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted && _selectedStudentId == null) {
+                setState(() {
+                  _selectedStudentId = onlyStudent['studentid'] as String;
+                  _selectedStudentName =
+                      '${onlyStudent['firstname']} ${onlyStudent['lastname']}';
+                });
+              }
+            });
+          }
 
           return Column(
             children: [
               // Child selector
               Padding(
                 padding: const EdgeInsets.all(16),
-                child: DropdownButtonFormField<String>(
-                  initialValue: _selectedStudentId,
-                  decoration: const InputDecoration(
-                    labelText: 'Select Child',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.child_care),
-                  ),
-                  hint: const Text('Choose a child'),
-                  items: children.map((c) {
-                    final st = c['student'] as Map<String, dynamic>;
-                    final id = st['studentid'] as String;
-                    final name = '${st['firstname']} ${st['lastname']}';
-                    return DropdownMenuItem(value: id, child: Text(name));
-                  }).toList(),
-                  onChanged: (v) {
-                    final st = children
-                        .map((c) => c['student'] as Map<String, dynamic>)
-                        .firstWhere((s) => s['studentid'] == v);
-                    setState(() {
-                      _selectedStudentId = v;
-                      _selectedStudentName =
-                          '${st['firstname']} ${st['lastname']}';
-                    });
-                  },
-                ),
+                child: onlyStudent != null
+                    ? InputDecorator(
+                        decoration: const InputDecoration(
+                          labelText: 'Child',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.child_care),
+                        ),
+                        child: Text(
+                          '${onlyStudent['firstname']} ${onlyStudent['lastname']}',
+                        ),
+                      )
+                    : DropdownButtonFormField<String>(
+                        initialValue: _selectedStudentId,
+                        decoration: const InputDecoration(
+                          labelText: 'Select Child',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.child_care),
+                        ),
+                        hint: const Text('Choose a child'),
+                        items: children.map((c) {
+                          final st = c['student'] as Map<String, dynamic>;
+                          final id = st['studentid'] as String;
+                          final name = '${st['firstname']} ${st['lastname']}';
+                          return DropdownMenuItem(value: id, child: Text(name));
+                        }).toList(),
+                        onChanged: (v) {
+                          final st = children
+                              .map((c) => c['student'] as Map<String, dynamic>)
+                              .firstWhere((s) => s['studentid'] == v);
+                          setState(() {
+                            _selectedStudentId = v;
+                            _selectedStudentName =
+                                '${st['firstname']} ${st['lastname']}';
+                          });
+                        },
+                      ),
               ),
 
               // Payment list
@@ -211,6 +231,7 @@ class _PaymentList extends ConsumerWidget {
                   final fs = p['feestructure'] as Map<String, dynamic>?;
                   final cls = fs?['class'] as Map<String, dynamic>?;
                   final amt = (p['amount'] as num).toDouble();
+                  final channel = p['paymentchannel'] as Map<String, dynamic>?;
                   return Card(
                     child: ListTile(
                       leading: const CircleAvatar(
@@ -236,6 +257,12 @@ class _PaymentList extends ConsumerWidget {
                             Text('Class: ${cls['classroomname']}'),
                           if (p['receiptnumber'] != null)
                             Text('Receipt: ${p['receiptnumber']}'),
+                          if (p['referencenumber'] != null)
+                            Text('Reference: ${p['referencenumber']}'),
+                          if (channel != null)
+                            Text(
+                              '${channel['displayname']} · ${channel['providername']} · ${channel['maskedidentifier']}',
+                            ),
                         ],
                       ),
                       isThreeLine: true,

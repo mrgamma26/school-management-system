@@ -1,21 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/widgets/app_widgets.dart';
-import '../../../authentication/presentation/providers/auth_provider.dart';
 import '../../data/finance_repository.dart';
 import '../../domain/models/payment.dart';
 import '../../../academics/data/academic_repository.dart';
 import '../../../academics/domain/models/academic_year.dart';
+import '../../../academics/domain/models/class_model.dart';
 
-final _allPaymentsProvider = FutureProvider.family<List<Payment>, String>((
-  ref,
-  yearId,
-) {
-  return FinanceRepository().allPayments(academicYearId: yearId);
-});
+final _allPaymentsProvider =
+    FutureProvider.family<
+      List<Payment>,
+      ({String yearId, String? classId, String? searchQuery})
+    >((ref, params) {
+      return FinanceRepository().allPayments(
+        academicYearId: params.yearId,
+        classId: params.classId,
+        searchQuery: params.searchQuery,
+      );
+    });
 
 final _yearsForPaymentsProvider = FutureProvider<List<AcademicYear>>((ref) {
   return AcademicRepository().listAcademicYears();
+});
+
+final _classesProvider = FutureProvider<List<ClassModel>>((ref) {
+  return AcademicRepository().listClasses();
 });
 
 class AllPaymentsPage extends ConsumerStatefulWidget {
@@ -27,29 +36,44 @@ class AllPaymentsPage extends ConsumerStatefulWidget {
 
 class _AllPaymentsPageState extends ConsumerState<AllPaymentsPage> {
   AcademicYear? _selectedYear;
+  ClassModel? _selectedClass;
+  String _searchQuery = '';
+  final _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final yearsAsync = ref.watch(_yearsForPaymentsProvider);
-    final role = ref.watch(authProvider).user?.roleName ?? '';
+    final classesAsync = ref.watch(_classesProvider);
     final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('All Payments'),
         actions: [
-          HomeButton(roleName: role),
           if (_selectedYear != null)
             IconButton(
               icon: const Icon(Icons.refresh_outlined),
-              onPressed: () =>
-                  ref.invalidate(_allPaymentsProvider(_selectedYear!.id)),
+              onPressed: () {
+                ref.invalidate(
+                  _allPaymentsProvider((
+                    yearId: _selectedYear!.id,
+                    classId: _selectedClass?.id,
+                    searchQuery: _searchQuery,
+                  )),
+                );
+              },
             ),
         ],
       ),
       body: Column(
         children: [
-          // Year selector
+          // Year selector + Search + Class filter
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
             child: yearsAsync.when(
@@ -68,18 +92,77 @@ class _AllPaymentsPageState extends ConsumerState<AllPaymentsPage> {
                     if (mounted) setState(() => _selectedYear = years.first);
                   });
                 }
-                return DropdownButtonFormField<AcademicYear>(
-                  initialValue: _selectedYear,
-                  decoration: const InputDecoration(
-                    labelText: 'Academic Year',
-                    prefixIcon: Icon(Icons.calendar_today),
-                  ),
-                  items: years
-                      .map(
-                        (y) => DropdownMenuItem(value: y, child: Text(y.label)),
-                      )
-                      .toList(),
-                  onChanged: (y) => setState(() => _selectedYear = y),
+                return Column(
+                  children: [
+                    // Academic year dropdown
+                    DropdownButtonFormField<AcademicYear>(
+                      initialValue: _selectedYear,
+                      decoration: const InputDecoration(
+                        labelText: 'Academic Year',
+                        prefixIcon: Icon(Icons.calendar_today),
+                      ),
+                      items: years
+                          .map(
+                            (y) => DropdownMenuItem(
+                              value: y,
+                              child: Text(y.label),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (y) => setState(() => _selectedYear = y),
+                    ),
+                    const SizedBox(height: 12),
+                    // Search field
+                    TextField(
+                      controller: _searchController,
+                      decoration: InputDecoration(
+                        labelText: 'Search by student name or ID',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: _searchQuery.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() => _searchQuery = '');
+                                },
+                              )
+                            : null,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      onChanged: (value) =>
+                          setState(() => _searchQuery = value),
+                    ),
+                    const SizedBox(height: 12),
+                    // Class filter dropdown
+                    classesAsync.when(
+                      loading: () => const LinearProgressIndicator(),
+                      error: (e, _) => Text('Error loading classes: $e'),
+                      data: (classes) {
+                        return DropdownButtonFormField<ClassModel?>(
+                          initialValue: _selectedClass,
+                          decoration: const InputDecoration(
+                            labelText: 'Filter by class (optional)',
+                            prefixIcon: Icon(Icons.class_),
+                          ),
+                          items: [
+                            const DropdownMenuItem(
+                              value: null,
+                              child: Text('All classes'),
+                            ),
+                            ...classes.map(
+                              (c) => DropdownMenuItem(
+                                value: c,
+                                child: Text(c.classroomName),
+                              ),
+                            ),
+                          ],
+                          onChanged: (c) => setState(() => _selectedClass = c),
+                        );
+                      },
+                    ),
+                  ],
                 );
               },
             ),
@@ -99,7 +182,11 @@ class _AllPaymentsPageState extends ConsumerState<AllPaymentsPage> {
               child: Consumer(
                 builder: (context, ref, _) {
                   final paymentsAsync = ref.watch(
-                    _allPaymentsProvider(_selectedYear!.id),
+                    _allPaymentsProvider((
+                      yearId: _selectedYear!.id,
+                      classId: _selectedClass?.id,
+                      searchQuery: _searchQuery,
+                    )),
                   );
 
                   return paymentsAsync.when(
@@ -107,9 +194,15 @@ class _AllPaymentsPageState extends ConsumerState<AllPaymentsPage> {
                         const LoadingState(message: 'Loading payments...'),
                     error: (e, _) => ErrorState(
                       error: e,
-                      onRetry: () => ref.invalidate(
-                        _allPaymentsProvider(_selectedYear!.id),
-                      ),
+                      onRetry: () {
+                        ref.invalidate(
+                          _allPaymentsProvider((
+                            yearId: _selectedYear!.id,
+                            classId: _selectedClass?.id,
+                            searchQuery: _searchQuery,
+                          )),
+                        );
+                      },
                     ),
                     data: (payments) {
                       if (payments.isEmpty) {
@@ -117,7 +210,7 @@ class _AllPaymentsPageState extends ConsumerState<AllPaymentsPage> {
                           icon: Icons.receipt_long_outlined,
                           title: 'No payments recorded',
                           subtitle:
-                              'No payments have been recorded for this academic year.',
+                              'No payments match your filters for this academic year.',
                         );
                       }
 
@@ -227,6 +320,26 @@ class _AllPaymentsPageState extends ConsumerState<AllPaymentsPage> {
                                             ),
                                           ],
                                         ),
+                                        if (p.referenceNumber != null)
+                                          Text(
+                                            'Reference: ${p.referenceNumber}',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: cs.onSurface.withValues(
+                                                alpha: 0.55,
+                                              ),
+                                            ),
+                                          ),
+                                        if (p.channelSummary != null)
+                                          Text(
+                                            p.channelSummary!,
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: cs.onSurface.withValues(
+                                                alpha: 0.55,
+                                              ),
+                                            ),
+                                          ),
                                       ],
                                     ),
                                     isThreeLine: true,
@@ -256,6 +369,18 @@ class _AllPaymentsPageState extends ConsumerState<AllPaymentsPage> {
                                           ),
                                       ],
                                     ),
+                                    onTap: () {
+                                      // View payment details or student account
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            'Payment: ${p.paymentId}',
+                                          ),
+                                        ),
+                                      );
+                                    },
                                   ),
                                 );
                               },

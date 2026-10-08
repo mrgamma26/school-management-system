@@ -92,11 +92,12 @@ CREATE TABLE IF NOT EXISTS public.academicyear (
   academicyearid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   academicyear   INTEGER NOT NULL,
   term           public.term_type NOT NULL,
+  form           TEXT CHECK (form IN ('FORM_1', 'FORM_2', 'FORM_3', 'FORM_4')),
   startdate      DATE NOT NULL,
   enddate        DATE NOT NULL,
   createdat      TIMESTAMPTZ NOT NULL DEFAULT now(),
   updatedat      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (academicyear, term)
+  UNIQUE (academicyear, term, form)
 );
 
 -- ─────────────────────────────────────────────
@@ -146,7 +147,7 @@ CREATE TABLE IF NOT EXISTS public.student (
   gender           public.gender_type NOT NULL,
   dateofbirth      DATE NOT NULL,
   physicaladdress  TEXT,
-  enrollmentstatus public.enrollment_status NOT NULL DEFAULT 'ENROLLED',
+  enrollmentstatus public.student_status_enum NOT NULL DEFAULT 'ENROLLED',
   createdat        TIMESTAMPTZ NOT NULL DEFAULT now(),
   updatedat        TIMESTAMPTZ NOT NULL DEFAULT now()
 );

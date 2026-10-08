@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import '../../../../core/errors/app_exception.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/widgets/app_widgets.dart';
+import '../../../../widgets/can.dart';
 import '../../data/progression_repository.dart';
 import '../../../../core/database/supabase_client.dart';
-import '../../../../core/services/audit_service.dart';
+import '../../../academics/domain/models/academic_year.dart';
 import '../../../authentication/presentation/providers/auth_provider.dart';
 
 // ── Providers ─────────────────────────────────────────────────────────────────
@@ -13,7 +14,7 @@ final _progressionYearsProvider = FutureProvider<List<Map<String, dynamic>>>((
 ) async {
   final rows = await supabase
       .from('academicyear')
-      .select('academicyearid, academicyear, term')
+      .select('academicyearid, academicyear, term, form')
       .order('academicyear', ascending: false);
   return List<Map<String, dynamic>>.from(rows as List);
 });
@@ -24,6 +25,65 @@ final _progressionReviewsProvider =
       yearId,
     ) async {
       return ProgressionRepository().allReviews(yearId);
+    });
+
+final _progressionStudentsProvider =
+    FutureProvider.family<List<Map<String, dynamic>>, String>((
+      ref,
+      periodId,
+    ) async {
+      final selected = await supabase
+          .from('academicyear')
+          .select('academicyear, form')
+          .eq('academicyearid', periodId)
+          .single();
+      final periods = List<Map<String, dynamic>>.from(
+        await supabase
+            .from('academicyear')
+            .select('startdate, enddate')
+            .eq('academicyear', selected['academicyear'])
+            .eq('form', selected['form']),
+      );
+      if (periods.isEmpty) return const [];
+      final starts =
+          periods.map((p) => DateTime.parse(p['startdate'] as String)).toList()
+            ..sort();
+      final ends =
+          periods.map((p) => DateTime.parse(p['enddate'] as String)).toList()
+            ..sort();
+      final schoolStart = starts.first;
+      final schoolEnd = ends.last;
+      final histories = List<Map<String, dynamic>>.from(
+        await supabase
+            .from('studentclasshistory')
+            .select(
+              'studentid, enrollmentdate, enddate, '
+              'student(firstname, lastname), class(form)',
+            ),
+      );
+      final students = <String, Map<String, dynamic>>{};
+      for (final history in histories) {
+        final classroom = history['class'] as Map?;
+        if (classroom?['form']?.toString() != selected['form']?.toString()) {
+          continue;
+        }
+        final enrollment = DateTime.parse(history['enrollmentdate'] as String);
+        final end = DateTime.tryParse(history['enddate']?.toString() ?? '');
+        if (enrollment.isAfter(schoolEnd) ||
+            (end != null && end.isBefore(schoolStart))) {
+          continue;
+        }
+        students[history['studentid'] as String] = history;
+      }
+      final result = students.values.toList();
+      result.sort((a, b) {
+        final aStudent = a['student'] as Map?;
+        final bStudent = b['student'] as Map?;
+        return '${aStudent?['firstname']} ${aStudent?['lastname']}'.compareTo(
+          '${bStudent?['firstname']} ${bStudent?['lastname']}',
+        );
+      });
+      return result;
     });
 
 // ── Page ──────────────────────────────────────────────────────────────────────
@@ -41,12 +101,15 @@ class ProgressionReviewsPage extends ConsumerStatefulWidget {
 class _ProgressionReviewsPageState
     extends ConsumerState<ProgressionReviewsPage> {
   String? _yearId;
-  String? _yearLabel;
-  String _filter = 'ALL'; // ALL | PENDING | APPROVED | RETAINED
+  String _filter = 'ALL'; // ALL | PENDING | PROMOTED | RETAINED
 
   bool get _canDecide {
-    final r = ref.read(authProvider).user?.roleName.toUpperCase() ?? '';
-    return r == 'HEAD_TEACHER' || r == 'SYSTEM_ADMIN' || r == 'SUPER_USER';
+    return ref
+        .watch(permissionsProvider)
+        .maybeWhen(
+          data: (permissions) => permissions.contains('progression:decide'),
+          orElse: () => false,
+        );
   }
 
   @override
@@ -57,18 +120,20 @@ class _ProgressionReviewsPageState
       appBar: AppBar(
         title: const Text('Progression Reviews'),
         actions: [
-          HomeButton(roleName: ref.watch(authProvider).user?.roleName ?? ''),
-          if (_yearId != null && _canDecide)
-            TextButton.icon(
-              onPressed: () => _showCreateDialog(),
-              icon: const Icon(Icons.add),
-              label: const Text('Add Review'),
+          if (_yearId != null)
+            Can(
+              permission: 'progression:decide',
+              child: TextButton.icon(
+                onPressed: () => _showCalculateDialog(),
+                icon: const Icon(Icons.add),
+                label: const Text('Calculate Review'),
+              ),
             ),
         ],
       ),
       body: yearsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
+        error: (e, _) => Center(child: Text(friendlyError(e))),
         data: (years) => Column(
           children: [
             // ── Year selector ──────────────────────────────────────────
@@ -84,14 +149,13 @@ class _ProgressionReviewsPageState
                 hint: const Text('Select academic year'),
                 items: years.map((y) {
                   final id = y['academicyearid'] as String;
-                  final label = '${y['academicyear']} — ${y['term']}';
+                  final label =
+                      '${formatAcademicYear(y['academicyear'])} • ${formatFormLevel(y['form']?.toString())} • ${y['term'].toString().replaceAll('_', ' ')}';
                   return DropdownMenuItem(value: id, child: Text(label));
                 }).toList(),
                 onChanged: (v) {
-                  final y = years.firstWhere((y) => y['academicyearid'] == v);
                   setState(() {
                     _yearId = v;
-                    _yearLabel = '${y['academicyear']} — ${y['term']}';
                   });
                 },
               ),
@@ -103,7 +167,7 @@ class _ProgressionReviewsPageState
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Row(
-                  children: ['ALL', 'PENDING', 'APPROVED', 'RETAINED']
+                  children: ['ALL', 'PENDING', 'PROMOTED', 'RETAINED']
                       .map(
                         (f) => Padding(
                           padding: const EdgeInsets.only(right: 8),
@@ -140,6 +204,166 @@ class _ProgressionReviewsPageState
     );
   }
 
+  Future<void> _showCalculateDialog() async {
+    final periodId = _yearId!;
+    List<Map<String, dynamic>> students;
+    try {
+      students = await ref.read(_progressionStudentsProvider(periodId).future);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(friendlyError(error))));
+      }
+      return;
+    }
+    if (!mounted) return;
+    String? studentId;
+    Map<String, dynamic>? result;
+    bool calculating = false;
+    String? errorMessage;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Calculate Annual Review'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (errorMessage != null) ...[
+                Text(errorMessage!, style: const TextStyle(color: Colors.red)),
+                const SizedBox(height: 12),
+              ],
+              DropdownButtonFormField<String>(
+                initialValue: studentId,
+                decoration: const InputDecoration(labelText: 'Student *'),
+                items: students.map((history) {
+                  final student = history['student'] as Map?;
+                  return DropdownMenuItem(
+                    value: history['studentid'] as String,
+                    child: Text(
+                      '${student?['firstname']} ${student?['lastname']}',
+                    ),
+                  );
+                }).toList(),
+                onChanged: calculating
+                    ? null
+                    : (value) => setDialogState(() => studentId = value),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: calculating ? null : () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton.icon(
+              onPressed: calculating
+                  ? null
+                  : () async {
+                      if (studentId == null) {
+                        setDialogState(
+                          () => errorMessage = 'Select a student first.',
+                        );
+                        return;
+                      }
+                      setDialogState(() {
+                        calculating = true;
+                        errorMessage = null;
+                      });
+                      try {
+                        result = await ProgressionRepository()
+                            .refreshAnnualReview(
+                              studentId: studentId!,
+                              academicYearId: periodId,
+                            );
+                        if (ctx.mounted) Navigator.pop(ctx);
+                      } catch (error) {
+                        setDialogState(
+                          () => errorMessage = friendlyError(error),
+                        );
+                      } finally {
+                        if (ctx.mounted) {
+                          setDialogState(() => calculating = false);
+                        }
+                      }
+                    },
+              icon: calculating
+                  ? const SizedBox.square(
+                      dimension: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.calculate_outlined),
+              label: const Text('Calculate / Refresh'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (result != null && mounted) {
+      ref.invalidate(_progressionReviewsProvider(periodId));
+      await _showEvidence(result!);
+    }
+  }
+
+  Future<void> _showEvidence(Map<String, dynamic> result) async {
+    final terms = (result['terms'] as List? ?? const []).cast<Map>();
+    final missing = (result['missing'] as List? ?? const []).cast<Map>();
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Annual Review Evidence'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ...terms.map((term) {
+                final enrolled = term['enrolled'] == true;
+                final average = term['average'];
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(term['term'].toString().replaceAll('_', ' ')),
+                  trailing: Text(
+                    enrolled ? '${average ?? '—'}' : '— / Not enrolled',
+                  ),
+                );
+              }),
+              const Divider(),
+              Text('Annual average: ${result['annualAverage'] ?? '—'}'),
+              Text('Recommendation: ${result['recommendation']}'),
+              Text('Pass threshold: ${result['passThreshold']}%'),
+              if (missing.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                const Text(
+                  'Missing results',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.red,
+                  ),
+                ),
+                ...missing.map(
+                  (item) => Text(
+                    '• ${item['term'] ?? 'Term'}: ${item['subject'] ?? ''} ${item['reason'] ?? ''}',
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Retained for installations that enable manual legacy review creation.
+  // ignore: unused_element
   Future<void> _showCreateDialog() async {
     final studentCtrl = TextEditingController();
     final scoreCtrl = TextEditingController();
@@ -211,7 +435,7 @@ class _ReviewList extends ConsumerWidget {
 
     return async.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Error: $e')),
+      error: (e, _) => Center(child: Text(friendlyError(e))),
       data: (reviews) {
         final filtered = filter == 'ALL'
             ? reviews
@@ -289,14 +513,14 @@ class _ReviewList extends ConsumerWidget {
   }
 
   Color _decisionColor(String d) => switch (d) {
-    'APPROVED' => Colors.green,
+    'PROMOTED' => Colors.green,
     'RETAINED' => Colors.orange,
     'REJECTED' => Colors.red,
     _ => Colors.grey,
   };
 
   IconData _decisionIcon(String d) => switch (d) {
-    'APPROVED' => Icons.check_circle,
+    'PROMOTED' => Icons.check_circle,
     'RETAINED' => Icons.pause_circle,
     'REJECTED' => Icons.cancel,
     _ => Icons.hourglass_empty,
@@ -321,30 +545,64 @@ class _DecisionButtons extends ConsumerWidget {
     WidgetRef ref,
     String decision,
   ) async {
-    final actor = ref.read(authProvider).user!;
-    final staffRow = await supabase
-        .from('staff')
-        .select('staffid')
-        .eq('userid', actor.userId)
-        .single();
-    final staffId = staffRow['staffid'] as String;
-
-    await ProgressionRepository().decide(
-      reviewId: reviewId,
-      staffId: staffId,
-      decision: decision,
+    final reasonController = TextEditingController();
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('$decision $studentName'),
+        content: TextField(
+          controller: reasonController,
+          autofocus: true,
+          maxLines: 3,
+          decoration: const InputDecoration(
+            labelText: 'Decision reason *',
+            hintText: 'Explain the evidence for this decision',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = reasonController.text.trim();
+              if (value.isNotEmpty) Navigator.pop(dialogContext, value);
+            },
+            child: const Text('Confirm'),
+          ),
+        ],
+      ),
     );
+    reasonController.dispose();
+    if (reason == null || !context.mounted) return;
 
-    await AuditService().log(
-      userId: actor.userId,
-      action: 'PROGRESSION_DECISION',
-      tableName: 'progressionreview',
-      recordId: reviewId,
-      actorRole: actor.roleName,
-      newValue: {'decision': decision, 'student': studentName},
-    );
-
-    ref.invalidate(_progressionReviewsProvider(yearId));
+    try {
+      final repository = ProgressionRepository();
+      final targetPeriodId = decision == 'PROMOTED'
+          ? await repository.nextAcademicPeriod(yearId)
+          : yearId;
+      await repository.decideAndPlace(
+        reviewId: reviewId,
+        decision: decision,
+        targetAcademicPeriodId: targetPeriodId,
+        reason: reason,
+      );
+      ref.invalidate(_progressionReviewsProvider(yearId));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$studentName was ${decision.toLowerCase()}.'),
+          ),
+        );
+      }
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(friendlyError(error))));
+      }
+    }
   }
 
   @override
@@ -352,15 +610,21 @@ class _DecisionButtons extends ConsumerWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        IconButton(
-          icon: const Icon(Icons.check_circle, color: Colors.green),
-          tooltip: 'Approve',
-          onPressed: () => _decide(context, ref, 'APPROVED'),
+        Can(
+          permission: 'progression:decide',
+          child: IconButton(
+            icon: const Icon(Icons.check_circle, color: Colors.green),
+            tooltip: 'Promote',
+            onPressed: () => _decide(context, ref, 'PROMOTED'),
+          ),
         ),
-        IconButton(
-          icon: const Icon(Icons.pause_circle, color: Colors.orange),
-          tooltip: 'Retain',
-          onPressed: () => _decide(context, ref, 'RETAINED'),
+        Can(
+          permission: 'progression:decide',
+          child: IconButton(
+            icon: const Icon(Icons.pause_circle, color: Colors.orange),
+            tooltip: 'Retain',
+            onPressed: () => _decide(context, ref, 'RETAINED'),
+          ),
         ),
       ],
     );

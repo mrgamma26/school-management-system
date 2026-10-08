@@ -1,8 +1,8 @@
+import 'package:school_management_app/features/academics/domain/models/academic_year.dart';
 import 'package:flutter/material.dart';
+import '../../../../core/errors/app_exception.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/widgets/app_widgets.dart';
 import '../../../../core/database/supabase_client.dart';
-import '../../../authentication/presentation/providers/auth_provider.dart';
 import '../../../../core/services/export_service.dart';
 
 // ── Providers ─────────────────────────────────────────────────────────────────
@@ -138,19 +138,14 @@ final _enrolmentReportProvider =
       // Students per class for the given year
       final rows = await supabase
           .from('studentclasshistory')
-          .select('classid, class(classname)')
+          .select('classid, class(classroomname)')
           .eq('academicyearid', yearId)
           .isFilter('enddate', null);
 
       final byClass = <String, int>{};
       for (final r in rows as List) {
         final cls = r['class'] as Map<String, dynamic>?;
-        final name =
-            cls?['classname'] as String? ??
-            cls?['classroomname']
-                as String? // handle both column name variants
-                ??
-            'Unknown';
+        final name = cls?['classroomname'] as String? ?? 'Unknown';
         byClass[name] =
             (byClass[name] ?? 0) + 1; // ← was missing: never populated
       }
@@ -276,9 +271,7 @@ class _ReportsPageState extends ConsumerState<ReportsPage>
     return Scaffold(
       appBar: AppBar(
         title: const Text('Reports'),
-        actions: [
-          HomeButton(roleName: ref.watch(authProvider).user?.roleName ?? ''),
-        ],
+        actions: const [],
         bottom: TabBar(
           controller: _tabs,
           tabs: const [
@@ -298,7 +291,7 @@ class _ReportsPageState extends ConsumerState<ReportsPage>
               loading: () => const LinearProgressIndicator(),
               error: (e, _) => Text('Error loading years: $e'),
               data: (years) => DropdownButtonFormField<String>(
-                value: _yearId,
+                initialValue: _yearId,
                 decoration: const InputDecoration(
                   labelText: 'Academic Year',
                   border: OutlineInputBorder(),
@@ -307,14 +300,14 @@ class _ReportsPageState extends ConsumerState<ReportsPage>
                 hint: const Text('Select academic year'),
                 items: years.map((y) {
                   final id = y['academicyearid'] as String;
-                  final lbl = '${y['academicyear']} — ${y['term']}';
+                  final lbl = formatAcademicYear(y['academicyear']);
                   return DropdownMenuItem(value: id, child: Text(lbl));
                 }).toList(),
                 onChanged: (v) {
                   final y = years.firstWhere((y) => y['academicyearid'] == v);
                   setState(() {
                     _yearId = v;
-                    _yearLabel = '${y['academicyear']} — ${y['term']}';
+                    _yearLabel = formatAcademicYear(y['academicyear']);
                   });
                 },
               ),
@@ -370,7 +363,7 @@ class _FinancialReport extends ConsumerWidget {
     final async = ref.watch(_financialReportProvider(yearId));
     return async.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Error: $e')),
+      error: (e, _) => Center(child: Text(friendlyError(e))),
       data: (data) => ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -780,7 +773,7 @@ class _EnrolmentReport extends ConsumerWidget {
     final async = ref.watch(_enrolmentReportProvider(yearId));
     return async.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Error: $e')),
+      error: (e, _) => Center(child: Text(friendlyError(e))),
       data: (data) {
         final byClass = data['by_class'] as Map<String, int>;
         return ListView(
@@ -883,7 +876,7 @@ class _PerformanceReport extends ConsumerWidget {
     final async = ref.watch(_performanceReportProvider(yearId));
     return async.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Error: $e')),
+      error: (e, _) => Center(child: Text(friendlyError(e))),
       data: (data) {
         final avgBySubject = data['avg_by_subject'] as Map<String, String>;
         final progCounts = data['progression_counts'] as Map<String, int>;

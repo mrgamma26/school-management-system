@@ -18,3 +18,7 @@ flutter run --dart-define-from-file=env/dev.json
 ```
 
 Apply the SQL files in `supabase/migrations/` in numeric order to a compatible Supabase project. Never commit environment values, service-role keys, signing files, or production credentials.
+
+## Verification
+
+The 8 October 2026 release candidate passes `flutter analyze`, all 98 Flutter tests, and a release Web build. See the [technical specification](docs/technical-specification.md) for the verification record and known live-data limitations.

@@ -16,15 +16,24 @@ class RoleHome extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final user = ref.watch(authProvider).user;
-    if (user == null) return const SizedBox.shrink();
+    final auth = ref.watch(authProvider);
+    final user = auth.user;
+    if (user == null) {
+      return Scaffold(
+        body: Center(
+          child: auth.isLoading
+              ? const CircularProgressIndicator()
+              : Text(auth.errorMessage ?? 'Unable to load your account.'),
+        ),
+      );
+    }
 
-    switch (user.roleName.trim().toUpperCase()) {
+    switch ((user.roleName.trim().toUpperCase() == 'SYSTEM_ADMIN'
+        ? 'SUPER_USER'
+        : user.roleName.trim().toUpperCase())) {
       case 'SUPER_USER':
-      case 'SYSTEM_ADMIN':
         return const AdminDashboard();
       case 'ADMINISTRATOR':
-      case 'REGISTRAR':
         return const AdministratorDashboard();
       case 'TEACHER':
         return const TeacherDashboard();

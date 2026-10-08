@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../../core/constants/app_strings.dart';
 import '../providers/auth_provider.dart';
 
 /// Login entry point — credentials are validated through [AuthNotifier].
@@ -44,6 +45,12 @@ class _LoginPageState extends ConsumerState<LoginPage>
     await ref
         .read(authProvider.notifier)
         .signIn(email: _emailCtrl.text.trim(), password: _passwordCtrl.text);
+
+    // Clear password on all submissions (success or failure) for security.
+    // Email persists for user to retry.
+    if (mounted) {
+      _passwordCtrl.clear();
+    }
     // Router redirect handles navigation on success.
   }
 
@@ -363,13 +370,14 @@ class _MobileHeader extends StatelessWidget {
               child: const Icon(Icons.school, size: 36, color: Colors.white),
             ),
             const SizedBox(height: 20),
-            const Text(
-              'Mai Halima School',
-              style: TextStyle(
+            Text(
+              AppStrings.appName,
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 24,
                 fontWeight: FontWeight.w800,
               ),
+              textAlign: TextAlign.center,
             ),
             const SizedBox(height: 4),
             Text(

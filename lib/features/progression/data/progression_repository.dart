@@ -56,6 +56,71 @@ class ProgressionRepository {
     });
   }
 
+  /// Creates or refreshes a PENDING annual review from submitted results.
+  /// The database, not Flutter, calculates all evidence and averages.
+  Future<Map<String, dynamic>> refreshAnnualReview({
+    required String studentId,
+    required String academicYearId,
+  }) async {
+    final period = await supabase
+        .from('academicyear')
+        .select('academicyear, form')
+        .eq('academicyearid', academicYearId)
+        .single();
+    final result = await supabase.rpc(
+      'refresh_progression_review',
+      params: {
+        'p_student_id': studentId,
+        'p_school_year': period['academicyear'],
+      },
+    );
+    return Map<String, dynamic>.from(result as Map);
+  }
+
+  Future<Map<String, dynamic>> decideAndPlace({
+    required String reviewId,
+    required String decision,
+    required String targetAcademicPeriodId,
+    required String reason,
+  }) async {
+    final result = await supabase.rpc(
+      'decide_and_place_student',
+      params: {
+        'p_review_id': reviewId,
+        'p_decision': decision,
+        'p_target_period_id': targetAcademicPeriodId,
+        'p_reason': reason,
+      },
+    );
+    return Map<String, dynamic>.from(result as Map);
+  }
+
+  Future<String> nextAcademicPeriod(String sourcePeriodId) async {
+    final source = await supabase
+        .from('academicyear')
+        .select('academicyear')
+        .eq('academicyearid', sourcePeriodId)
+        .single();
+    final sourceForm = source['form']?.toString();
+    final nextForm = switch (sourceForm) {
+      'FORM_1' => 'FORM_2',
+      'FORM_2' => 'FORM_3',
+      'FORM_3' => 'FORM_4',
+      _ => null,
+    };
+    if (nextForm == null) {
+      throw StateError('No next form is configured after $sourceForm.');
+    }
+    final row = await supabase
+        .from('academicyear')
+        .select('academicyearid')
+        .eq('academicyear', (source['academicyear'] as int) + 1)
+        .eq('term', 'TERM_1')
+        .eq('form', nextForm)
+        .single();
+    return row['academicyearid'] as String;
+  }
+
   /// Records the Head Teacher's decision on a review.
   ///
   /// [decision] must be one of [kProgressionDecisions]: PROMOTED or RETAINED.

@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/widgets/app_widgets.dart';
 import '../../../widgets/app_shell.dart';
-import '../../../core/navigation/nav_items.dart';
 import '../../authentication/presentation/providers/auth_provider.dart';
 import 'dashboard_scaffold.dart';
 
@@ -12,9 +11,8 @@ class AdministratorDashboard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final user = ref.watch(authProvider).user;
+    ref.watch(authProvider);
     return AppShell(
-      navItems: getNavItemsForRole(user?.roleName ?? 'GUEST'),
       homeRoute: '/administrator/home',
       body: DashboardBody(
         subtitle: 'Manage students, enrolment, guardians and school records',
@@ -32,7 +30,7 @@ class AdministratorDashboard extends ConsumerWidget {
                 () => context.go('/students'),
               ),
               _T(
-                'Enrol Student',
+                'Register Student',
                 Icons.person_add_alt,
                 AppColors.success,
                 () => context.go('/students/new'),
@@ -42,18 +40,13 @@ class AdministratorDashboard extends ConsumerWidget {
           DashGrid(
             sectionTitle: 'Guardians',
             sectionIcon: Icons.family_restroom,
+            maxColumns: 1,
             tiles: [
               _T(
                 'Guardians',
                 Icons.family_restroom,
                 AppColors.roleGuardian,
                 () => context.go('/users/guardians'),
-              ),
-              _T(
-                'Add Guardian',
-                Icons.person_add,
-                AppColors.roleTeacher,
-                () => context.go('/users/guardians/new'),
               ),
             ],
           ),
@@ -106,8 +99,33 @@ class AdministratorDashboard extends ConsumerWidget {
             ],
           ),
           DashGrid(
+            sectionTitle: 'Finance',
+            sectionIcon: Icons.payments_outlined,
+            tiles: [
+              _T(
+                'Payments',
+                Icons.payments_outlined,
+                AppColors.primary,
+                () => context.go('/finance/payments'),
+              ),
+              _T(
+                'Fee Structures',
+                Icons.receipt_long_outlined,
+                AppColors.success,
+                () => context.go('/finance/fees'),
+              ),
+              _T(
+                'Payment Configuration',
+                Icons.tune_outlined,
+                AppColors.roleAccountant,
+                () => context.go('/finance/payment-configuration'),
+              ),
+            ],
+          ),
+          DashGrid(
             sectionTitle: 'Communications & Reports',
             sectionIcon: Icons.campaign,
+            maxColumns: 3,
             tiles: [
               _T(
                 'Notifications',

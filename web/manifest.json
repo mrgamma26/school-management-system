@@ -1,11 +1,11 @@
 {
-    "name": "Mai Halima School Management",
+    "name": "School Management System",
     "short_name": "School Management",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#FFFFFF",
     "theme_color": "#1565C0",
-    "description": "Complete school management system for Mai Halima School",
+    "description": "School Management System",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

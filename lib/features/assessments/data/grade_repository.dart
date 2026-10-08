@@ -76,6 +76,7 @@ class GradeRepository {
       'enteredby': staffId,
       'score': score,
       'gradestatus': status,
+      'submissionstatus': 'DRAFT',
     };
 
     if (existing == null) {
@@ -86,6 +87,14 @@ class GradeRepository {
           .update(data)
           .eq('gradeid', existing['gradeid']);
     }
+  }
+
+  /// Makes all grades in an assessment eligible for annual progression.
+  Future<void> submitAssessment(String assessmentId) async {
+    await supabase
+        .from('grade')
+        .update({'submissionstatus': 'SUBMITTED'})
+        .eq('assessmentid', assessmentId);
   }
 
   /// Returns the raw grade row for audit/correction purposes.

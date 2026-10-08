@@ -1,10 +1,12 @@
+import '../../../../core/auth/school_role_access.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../../core/widgets/app_widgets.dart';
+import '../../../../widgets/skeleton_loader.dart';
 import '../../../authentication/presentation/providers/auth_provider.dart';
 import '../../data/academic_repository.dart';
 import '../../domain/models/academic_year.dart';
-import 'academic_year_form_page.dart';
 
 final _academicYearsProvider = FutureProvider<List<AcademicYear>>((ref) {
   return AcademicRepository().listAcademicYears();
@@ -16,55 +18,69 @@ class AcademicYearListPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(_academicYearsProvider);
-    final role = ref.watch(authProvider).user?.roleName ?? '';
+    final user = ref.watch(authProvider).user;
+
+    // Allow edit if user is ADMIN or above (ADMIN, SUPER_ADMIN)
+    final canEdit = canManageSchoolCalendar(user?.roleName ?? '');
+
     final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Academic Years'),
         actions: [
-          HomeButton(roleName: role),
           IconButton(
             icon: const Icon(Icons.refresh_outlined),
             onPressed: () => ref.invalidate(_academicYearsProvider),
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          await Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const AcademicYearFormPage()),
-          );
-          ref.invalidate(_academicYearsProvider);
-        },
-        icon: const Icon(Icons.add),
-        label: const Text('Add Year'),
-      ),
+      floatingActionButton: !canEdit
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: () async {
+                await context.push('/academics/years/new');
+                ref.invalidate(_academicYearsProvider);
+              },
+              icon: const Icon(Icons.add),
+              label: const Text('Add Year'),
+            ),
       body: async.when(
-        loading: () => const LoadingState(message: 'Loading academic years...'),
+        loading: () => ListView.builder(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 100),
+          itemCount: 5,
+          itemBuilder: (_, i) => Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: SkeletonCard(height: 80, padding: const EdgeInsets.all(0)),
+          ),
+        ),
         error: (e, _) => ErrorState(
           error: e,
           onRetry: () => ref.invalidate(_academicYearsProvider),
         ),
         data: (years) {
           if (years.isEmpty) {
-            return EmptyState(
-              icon: Icons.calendar_today_outlined,
-              title: 'No academic years yet',
-              subtitle: 'Create an academic year to start organising terms.',
-              action: FilledButton.icon(
-                onPressed: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const AcademicYearFormPage(),
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  EmptyState(
+                    icon: Icons.calendar_today_outlined,
+                    title: 'No academic years yet',
+                    subtitle:
+                        'Create an academic year to organise your school.',
+                  ),
+                  const SizedBox(height: 24),
+                  if (canEdit)
+                    ElevatedButton.icon(
+                      onPressed: () async {
+                        await context.push('/academics/years/new');
+                        ref.invalidate(_academicYearsProvider);
+                      },
+                      icon: const Icon(Icons.add),
+                      label: const Text('Create Academic Year'),
                     ),
-                  );
-                  ref.invalidate(_academicYearsProvider);
-                },
-                icon: const Icon(Icons.add),
-                label: const Text('Add Year'),
+                ],
               ),
             );
           }
@@ -96,22 +112,22 @@ class AcademicYearListPage extends ConsumerWidget {
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   subtitle: Text(
-                    '$start -> $end',
+                    '${formatFormLevel(y.form)} • ${y.term.replaceAll('_', ' ')} • $start → $end',
                     style: TextStyle(
                       fontSize: 12,
                       color: cs.onSurface.withValues(alpha: 0.55),
                     ),
                   ),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () async {
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => AcademicYearFormPage(existing: y),
-                      ),
-                    );
-                    ref.invalidate(_academicYearsProvider);
-                  },
+                  onTap: canEdit
+                      ? () async {
+                          await context.push(
+                            '/academics/years/${y.id}/edit',
+                            extra: y,
+                          );
+                          ref.invalidate(_academicYearsProvider);
+                        }
+                      : null,
                 ),
               );
             },

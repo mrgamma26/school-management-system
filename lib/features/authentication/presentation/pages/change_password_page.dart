@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../../core/router.dart';
 import '../providers/auth_provider.dart';
 
 /// Forces a password change when [AppUser.mustChangePassword] is true.
@@ -26,38 +27,24 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
   }
 
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
+    final newPassword = _newPasswordController.text.trim();
+    final confirmPassword = _confirmPasswordController.text.trim();
+
+    if (newPassword.isEmpty || confirmPassword.isEmpty) {
+      if (!_formKey.currentState!.validate()) return;
+    }
 
     final success = await ref
         .read(authProvider.notifier)
-        .changePassword(_newPasswordController.text);
+        .changePassword(newPassword);
 
     if (!mounted) return;
 
     if (success) {
       final user = ref.read(authProvider).user;
       if (user != null) {
-        context.go(_homeForRole(user.roleName));
+        context.go(homeForRole(user.roleName));
       }
-    }
-  }
-
-  String _homeForRole(String role) {
-    switch (role.trim().toUpperCase()) {
-      case 'REGISTRAR':
-        return '/registrar/home';
-      case 'TEACHER':
-        return '/teacher/home';
-      case 'HEAD_TEACHER':
-        return '/headteacher/home';
-      case 'ACCOUNTANT':
-        return '/accountant/home';
-      case 'ICA_DIRECTOR':
-        return '/icadirector/home';
-      case 'GUARDIAN':
-        return '/guardian/home';
-      default:
-        return '/admin/home';
     }
   }
 
@@ -109,10 +96,11 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
                       ),
                     ),
                     validator: (value) {
-                      if (value == null || value.isEmpty) {
+                      final trimmed = value?.trim() ?? '';
+                      if (trimmed.isEmpty) {
                         return 'Password is required.';
                       }
-                      if (value.length < 8) {
+                      if (trimmed.length < 8) {
                         return 'Password must be at least 8 characters.';
                       }
                       return null;
@@ -139,10 +127,11 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
                       ),
                     ),
                     validator: (value) {
-                      if (value == null || value.isEmpty) {
+                      final trimmed = value?.trim() ?? '';
+                      if (trimmed.isEmpty) {
                         return 'Please confirm your password.';
                       }
-                      if (value != _newPasswordController.text) {
+                      if (trimmed != _newPasswordController.text.trim()) {
                         return 'Passwords do not match.';
                       }
                       return null;
