@@ -36,6 +36,14 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Local browser/E2E helpers and generated diagnostic output
+.tmp_*.mjs
+.tmp_*.png
+.visible-test-screen.png
+*-output.txt
+*-error.txt
+node_modules/
+
 # Symbolication related
 app.*.symbols
 
