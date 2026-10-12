@@ -14,8 +14,9 @@ Use the full repair rather than a button-only or data-only workaround.
 1. Restore `class_assignment_page.dart` from its tracked Git version because
    its current working-tree contents are empty.
 2. On the Classes page, determine management access from the established
-   school-admin roles plus `academics:write`. Show an explicit Add Class action
-   in the app bar and retain a discoverable create action in empty states.
+   school-admin roles plus `academics:write`. Show exactly one Add Class action:
+   the bottom-right floating action button. Do not duplicate it in the app bar
+   or empty state.
 3. Require a Form level when creating or editing a class. Class assignments
    are scoped by the selected academic period's form, so accepting an
    unconfigured form would create records that cannot be assigned.
