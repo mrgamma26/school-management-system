@@ -50,7 +50,7 @@ supabase login
 supabase link --project-ref YOUR_PROJECT_REF
 
 # 3. Set the email secrets
-supabase secrets set RESEND_API_KEY=re_your_actual_api_key_here
+supabase secrets set RESEND_API_KEY=YOUR_RESEND_API_KEY
 supabase secrets set SENDER_EMAIL=notifications@yourdomain.com
 
 # 4. Deploy the function

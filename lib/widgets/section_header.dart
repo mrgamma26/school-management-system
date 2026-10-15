@@ -4,9 +4,9 @@ import '../theme/app_tokens.dart';
 /// Section header with optional icon and trailing action.
 /// Used between grid/list sections on dashboards.
 class SectionHeader extends StatelessWidget {
-  final String    title;
+  final String title;
   final IconData? icon;
-  final String?   actionLabel;
+  final String? actionLabel;
   final VoidCallback? onAction;
 
   const SectionHeader(
@@ -32,9 +32,9 @@ class SectionHeader extends StatelessWidget {
               title,
               style: const TextStyle(
                 fontFamily: AppText.fontHeading,
-                fontSize:   16,
+                fontSize: 16,
                 fontWeight: FontWeight.w700,
-                color:      AppColors.textPrimary,
+                color: AppColors.textPrimary,
               ),
             ),
           ),
@@ -45,9 +45,9 @@ class SectionHeader extends StatelessWidget {
                 actionLabel!,
                 style: const TextStyle(
                   fontFamily: AppText.fontBody,
-                  fontSize:   13,
+                  fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color:      AppColors.primary,
+                  color: AppColors.primary,
                 ),
               ),
             ),

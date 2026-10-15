@@ -14,24 +14,21 @@ class NotchedCard extends StatelessWidget {
   const NotchedCard({
     super.key,
     required this.child,
-    this.gradient  = AppGradients.primaryHero,
+    this.gradient = AppGradients.primaryHero,
     this.notchSize = 28,
-    this.radius    = 20,
-    this.padding   = const EdgeInsets.all(Sp.xl),
+    this.radius = 20,
+    this.padding = const EdgeInsets.all(Sp.xl),
     this.shadows,
   });
 
   @override
   Widget build(BuildContext context) {
-    final shape = NotchedCornerBorder(
-      radius:    radius,
-      notchSize: notchSize,
-    );
+    final shape = NotchedCornerBorder(radius: radius, notchSize: notchSize);
     return Container(
       decoration: ShapeDecoration(
         gradient: gradient,
-        shape:    shape,
-        shadows:  shadows ?? AppShadows.elevated,
+        shape: shape,
+        shadows: shadows ?? AppShadows.elevated,
       ),
       child: Padding(padding: padding, child: child),
     );

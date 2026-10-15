@@ -57,12 +57,10 @@ class PermissionHelper {
   bool has(String permission) => grantedPermissions.contains(permission);
 
   /// True if user has ANY of the given permissions.
-  bool hasAny(List<String> permissions) =>
-      permissions.any((p) => has(p));
+  bool hasAny(List<String> permissions) => permissions.any((p) => has(p));
 
   /// True if user has ALL of the given permissions.
-  bool hasAll(List<String> permissions) =>
-      permissions.every((p) => has(p));
+  bool hasAll(List<String> permissions) => permissions.every((p) => has(p));
 
   /// True if user's role is at least [minRole].
   bool isAtLeast(UserRole minRole) => role.isAtLeast(minRole);
@@ -93,16 +91,14 @@ class PermissionHelper {
       has('students:write') || isAtLeast(UserRole.manager);
 
   /// True if user can read student data.
-  bool get canReadStudents =>
-      has('students:read') || isAtLeast(UserRole.staff);
+  bool get canReadStudents => has('students:read') || isAtLeast(UserRole.staff);
 
   /// True if user can manage assessments/grades.
   bool get canManageAssessments =>
       has('assessments:write') || isAtLeast(UserRole.manager);
 
   /// True if user can enter grades.
-  bool get canEnterGrades =>
-      has('grades:write') || isAtLeast(UserRole.staff);
+  bool get canEnterGrades => has('grades:write') || isAtLeast(UserRole.staff);
 
   /// True if user can read assessments/grades.
   bool get canReadAssessments =>
@@ -125,8 +121,7 @@ class PermissionHelper {
       has('weeding:write') || isAtLeast(UserRole.manager);
 
   /// True if user can view weeding reviews.
-  bool get canViewWeeding =>
-      has('weeding:read') || isAtLeast(UserRole.staff);
+  bool get canViewWeeding => has('weeding:read') || isAtLeast(UserRole.staff);
 
   /// True if user can make progression decisions.
   bool get canDecideProgression =>
@@ -141,16 +136,14 @@ class PermissionHelper {
       has('comments:write') || roleName.toUpperCase() == 'TEACHER';
 
   /// True if user can read comments.
-  bool get canReadComments =>
-      has('comments:read') || isAtLeast(UserRole.staff);
+  bool get canReadComments => has('comments:read') || isAtLeast(UserRole.staff);
 
   /// True if user can manage communications.
   bool get canManageCommunications =>
       has('communications:write') || isAtLeast(UserRole.manager);
 
   /// True if user can export data.
-  bool get canExport =>
-      has('export:write') || isAtLeast(UserRole.admin);
+  bool get canExport => has('export:write') || isAtLeast(UserRole.admin);
 
   @override
   String toString() =>
@@ -158,8 +151,7 @@ class PermissionHelper {
 }
 
 /// Provider: loads current user's permissions and role once on auth.
-final permissionHelperProvider =
-    FutureProvider<PermissionHelper?>((ref) async {
+final permissionHelperProvider = FutureProvider<PermissionHelper?>((ref) async {
   final user = ref.watch(authProvider).user;
   if (user == null) return null;
 

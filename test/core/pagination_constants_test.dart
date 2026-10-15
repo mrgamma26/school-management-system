@@ -20,9 +20,12 @@ void main() {
       expect(kPaymentPageSize, lessThanOrEqualTo(5000));
     });
 
-    test('page sizes are consistent — user list is not larger than student list', () {
-      // A school has fewer staff than students, so this ordering makes sense.
-      expect(kUserPageSize, lessThanOrEqualTo(kStudentPageSize));
-    });
+    test(
+      'page sizes are consistent — user list is not larger than student list',
+      () {
+        // A school has fewer staff than students, so this ordering makes sense.
+        expect(kUserPageSize, lessThanOrEqualTo(kStudentPageSize));
+      },
+    );
   });
 }

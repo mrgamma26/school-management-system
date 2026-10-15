@@ -60,6 +60,17 @@ app.*.map.json
 env/dev.json
 env/staging.json
 env/production.json
+users n passwords.txt
+supabase/functions/.env
+.env
+.env.*
+!.env.example
+!**/.env.example
+
+# Local development tool state
+.serena/
+supabase/.temp/
+supabase/.branches/
 
 # Mobile Credentials
 android/app/key.properties

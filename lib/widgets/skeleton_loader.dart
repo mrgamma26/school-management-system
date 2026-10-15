@@ -202,19 +202,11 @@ class SkeletonPageLoader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: title != null ? Text(title!) : null,
-      ),
+      appBar: AppBar(title: title != null ? Text(title!) : null),
       floatingActionButton: showFab
-          ? const FloatingActionButton(
-              onPressed: null,
-              child: Icon(Icons.add),
-            )
+          ? const FloatingActionButton(onPressed: null, child: Icon(Icons.add))
           : null,
-      body: SkeletonListLoader(
-        itemCount: itemCount,
-        itemHeight: itemHeight,
-      ),
+      body: SkeletonListLoader(itemCount: itemCount, itemHeight: itemHeight),
     );
   }
 }

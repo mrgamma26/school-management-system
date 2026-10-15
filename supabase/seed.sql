@@ -1,0 +1,6 @@
+-- Safe local seed entry point.
+--
+-- The project deliberately does not commit login passwords or production-like
+-- personal data. Use scripts/setup-local.ps1 to create a local Super User, then
+-- create role-specific test accounts through the application's User Management
+-- page. Keep all sample identities fictional and use a development database.
