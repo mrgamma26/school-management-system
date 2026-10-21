@@ -6,7 +6,9 @@ import '../../users/data/repositories/user_repository.dart';
 import '../../users/domain/models/guardian.dart';
 import '../../authentication/presentation/providers/auth_provider.dart';
 import '../../../core/services/audit_service.dart';
-import '../../../widgets/skeleton_loader.dart';
+import '../../../core/widgets/app_widgets.dart' show ErrorState, LoadingState;
+import '../../../theme/app_tokens.dart';
+import '../../../widgets/ui_kit.dart';
 
 /// Manages the guardian links for one student.
 class GuardianLinkPage extends ConsumerStatefulWidget {
@@ -174,38 +176,60 @@ class _GuardianLinkPageState extends ConsumerState<GuardianLinkPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Guardian Links')),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _linkGuardian,
-        icon: const Icon(Icons.add),
-        label: const Text('Link Guardian'),
-      ),
-      body: _loading
-          ? const SkeletonListLoader(itemCount: 3, itemHeight: 88)
-          : _error != null
-          ? Center(child: Text(_error!))
-          : _links.isEmpty
-          ? const Center(child: Text('No guardians linked yet.'))
-          : ListView.builder(
-              itemCount: _links.length,
-              itemBuilder: (_, i) {
-                final link = _links[i];
-                final g = link['guardian'] as Map<String, dynamic>;
-                final name = '${g['firstname']} ${g['lastname']}';
-                return ListTile(
-                  leading: const Icon(Icons.person),
-                  title: Text(name),
-                  subtitle: Text(link['relationship'] as String? ?? ''),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.link_off, color: Colors.red),
-                    tooltip: 'Remove link',
-                    onPressed: () =>
-                        _unlink(link['guardianid'] as String, name),
-                  ),
-                );
-              },
+    return UiPage(
+      children: [
+        PageHead(
+          kicker: 'Students',
+          title: 'Guardian Links',
+          subtitle: 'Guardians who can see this learner\'s results and fees.',
+          actions: [
+            UiButton(
+              'Link Guardian',
+              icon: Icons.add_rounded,
+              onPressed: _loading ? null : _linkGuardian,
             ),
+          ],
+        ),
+        if (_loading)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 48),
+            child: LoadingState(message: 'Loading guardian links…'),
+          )
+        else if (_error != null)
+          ErrorState(error: _error!, onRetry: _load)
+        else if (_links.isEmpty)
+          const UiCard(
+            child: UiEmptyState(
+              icon: Icons.link_off_rounded,
+              title: 'No guardians linked yet',
+            ),
+          )
+        else
+          DataTableCard(
+            columns: const [
+              UiColumn('Guardian', flex: 16),
+              UiColumn('Relationship', flex: 10),
+              UiColumn('', width: 48),
+            ],
+            rows: [
+              for (final link in _links) _linkRow(link),
+            ],
+          ),
+      ],
     );
+  }
+
+  UiTableRow _linkRow(Map<String, dynamic> link) {
+    final g = link['guardian'] as Map<String, dynamic>;
+    final name = '${g['firstname']} ${g['lastname']}';
+    return UiTableRow([
+      PersonCell(name),
+      UiCellText(link['relationship'] as String? ?? ''),
+      IconButton(
+        icon: const Icon(Icons.link_off, size: 18, color: AppColors.danger),
+        tooltip: 'Remove link',
+        onPressed: () => _unlink(link['guardianid'] as String, name),
+      ),
+    ]);
   }
 }

@@ -44,6 +44,68 @@ double? validateScore(String raw, double maxScore) {
 
 /// Data access for the [grade] table.
 class GradeRepository {
+  Future<int> publishAssessment(String assessmentId) async {
+    final result = await supabase.rpc(
+      'publish_assessment_results',
+      params: {'p_assessment_id': assessmentId},
+    );
+    return (result as num?)?.toInt() ?? 0;
+  }
+
+  /// Head Teacher / Super User: send a submitted, unpublished sheet back to
+  /// the teacher as DRAFT with a reason (at least 10 characters). Returns the
+  /// number of grades returned.
+  Future<int> returnToTeacher({
+    required String assessmentId,
+    required String reason,
+  }) async {
+    final result = await supabase.rpc(
+      'return_assessment_to_teacher',
+      params: {'p_assessment_id': assessmentId, 'p_reason': reason},
+    );
+    final map = result is Map ? result : const {};
+    return (map['grades_returned'] as num?)?.toInt() ?? 0;
+  }
+
+  Future<String> requestCorrection({
+    required String gradeId,
+    required String reason,
+  }) async {
+    if (reason.trim().isEmpty) {
+      throw ArgumentError('A correction reason is required.');
+    }
+    final result = await supabase.rpc(
+      'request_result_correction',
+      params: {'p_grade_id': gradeId, 'p_reason': reason.trim()},
+    );
+    return result as String;
+  }
+
+  Future<void> decideCorrection({
+    required String requestId,
+    required bool approved,
+    String? reason,
+  }) async {
+    await supabase.rpc(
+      'decide_result_correction',
+      params: {
+        'p_request_id': requestId,
+        'p_approved': approved,
+        'p_reason': reason?.trim().isEmpty == true ? null : reason?.trim(),
+      },
+    );
+  }
+
+  Future<void> completeCorrection({
+    required String requestId,
+    required double? score,
+  }) async {
+    await supabase.rpc(
+      'complete_result_correction',
+      params: {'p_request_id': requestId, 'p_new_score': score},
+    );
+  }
+
   /// Returns all grades for a given [assessmentId].
   Future<List<Grade>> gradesForAssessment(String assessmentId) async {
     final rows = await supabase
@@ -63,13 +125,6 @@ class GradeRepository {
     required double? score,
     required String status,
   }) async {
-    final existing = await supabase
-        .from('grade')
-        .select('gradeid')
-        .eq('assessmentid', assessmentId)
-        .eq('studentid', studentId)
-        .maybeSingle();
-
     final data = {
       'assessmentid': assessmentId,
       'studentid': studentId,
@@ -79,14 +134,12 @@ class GradeRepository {
       'submissionstatus': 'DRAFT',
     };
 
-    if (existing == null) {
-      await supabase.from('grade').insert(data);
-    } else {
-      await supabase
-          .from('grade')
-          .update(data)
-          .eq('gradeid', existing['gradeid']);
-    }
+    // Atomic upsert prevents duplicate-key errors when auto-save and a quick
+    // second edit overlap for the same assessment/student pair.
+    await supabase.from('grade').upsert(
+      data,
+      onConflict: 'assessmentid,studentid',
+    );
   }
 
   /// Makes all grades in an assessment eligible for annual progression.

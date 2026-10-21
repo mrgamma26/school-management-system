@@ -153,7 +153,7 @@ class AcademicRepository {
     }
   }
 
-  Future<void> createClass(String classroomName, String? form) async {
+  Future<void> createClass(String classroomName, String form) async {
     try {
       await supabase.from('class').insert({
         'classroomname': classroomName,
@@ -167,7 +167,7 @@ class AcademicRepository {
   Future<void> updateClass(
     String classId,
     String classroomName,
-    String? form,
+    String form,
   ) async {
     try {
       await supabase
@@ -283,7 +283,11 @@ class AcademicRepository {
       final staffId = staffRow?['staffid'] as String?;
       if (staffId == null) return const [];
 
-      final rows = List<Map<String, dynamic>>.from(
+      // Assessment, roster and class-history records still use the legacy
+      // classsubject/academicyear identifiers. The database bridge keeps these
+      // rows linked to the active canonical teacher assignment, so use them as
+      // the application-facing identifiers and let RLS hide replaced rows.
+      final legacyRows = List<Map<String, dynamic>>.from(
         await supabase
             .from('classsubject')
             .select(
@@ -291,7 +295,40 @@ class AcademicRepository {
             )
             .eq('staffid', staffId),
       );
-      return await _hydrateAssignments(rows, includeStaff: false);
+      if (legacyRows.isNotEmpty) {
+        return await _hydrateAssignments(legacyRows, includeStaff: false);
+      }
+
+      // Compatibility fallback for a database where the bridge migration has
+      // not run yet. These rows are useful for assignment listings, but mark
+      // entry remains unavailable until matching legacy rows are synchronized.
+      final assignmentRows = List<Map<String, dynamic>>.from(
+        await supabase
+            .from('teacher_assignments')
+            .select(
+              'teacher_assignment_id, class_subject_id, academic_year_id, status, '
+              'class_subject:class_subject_id(class_id, subject_id, '
+              'class:class_id(classroomname), subject:subject_id(subjectname))',
+            )
+            .eq('staff_id', staffId)
+            .eq('status', 'ACTIVE'),
+      );
+      return assignmentRows.map((row) {
+        final classSubject =
+            row['class_subject'] as Map<String, dynamic>? ?? {};
+        final classRow = classSubject['class'] as Map<String, dynamic>? ?? {};
+        final subjectRow =
+            classSubject['subject'] as Map<String, dynamic>? ?? {};
+        return ClassSubject(
+          id: row['teacher_assignment_id'] as String,
+          classId: classSubject['class_id'] as String,
+          subjectId: classSubject['subject_id'] as String,
+          staffId: staffId,
+          academicYearId: row['academic_year_id'] as String,
+          className: classRow['classroomname'] as String?,
+          subjectName: subjectRow['subjectname'] as String?,
+        );
+      }).toList();
     } catch (e) {
       throw _mapException(e);
     }

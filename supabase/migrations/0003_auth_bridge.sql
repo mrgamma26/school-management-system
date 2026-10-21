@@ -19,7 +19,6 @@ BEGIN
       ON DELETE CASCADE;
   END IF;
 END $$;
-
 -- Seed the canonical role set (safe to re-run — ON CONFLICT is a no-op).
 INSERT INTO public.role (rolename, description) VALUES
   ('ADMINISTRATOR', 'Manages student and account registration'),

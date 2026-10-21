@@ -19,6 +19,21 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+
+// Supports both the legacy and the new Supabase API-key environment variables.
+function runtimeKey(legacyName: string, dictionaryName: string): string | null {
+  const legacy = Deno.env.get(legacyName);
+  if (legacy) return legacy;
+  const raw = Deno.env.get(dictionaryName);
+  if (!raw) return null;
+  try {
+    const keys = JSON.parse(raw) as Record<string, string>;
+    return keys.default ?? Object.values(keys)[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: CORS_HEADERS });
@@ -28,18 +43,23 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return jsonResponse({ error: "Unauthorized" }, 401);
 
-    const anonClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } },
-    );
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const publishableKey = runtimeKey("SUPABASE_ANON_KEY", "SUPABASE_PUBLISHABLE_KEYS");
+    const secretKey = runtimeKey("SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_SECRET_KEYS");
+    if (!supabaseUrl || !publishableKey || !secretKey) {
+      return jsonResponse({ error: "Function is missing Supabase runtime keys." }, 500);
+    }
+
+    const anonClient = createClient(supabaseUrl, publishableKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
 
     const { data: callerData } = await anonClient.auth.getUser();
     if (!callerData.user) return jsonResponse({ error: "Unauthorized" }, 401);
 
     const { data: callerProfile } = await anonClient
       .from("systemuser")
-      .select("role(rolename)")
+      .select("role:role!fk_systemuser_role(rolename)")
       .eq("userid", callerData.user.id)
       .eq("isactive", true)
       .single();
@@ -60,10 +80,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
 
     // Soft-delete: set isactive = false. Never hard-delete a user.
-    const serviceClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    );
+    const serviceClient = createClient(supabaseUrl, secretKey);
 
     const { error } = await serviceClient
       .from("systemuser")

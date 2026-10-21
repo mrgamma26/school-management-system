@@ -8,13 +8,14 @@ import 'package:flutter/material.dart';
 class AppColors {
   AppColors._();
 
-  // Primary - indigo/blue from the Akademi reference
-  static const primary = Color(0xFF4F5FEE);
-  static const primaryLight = Color(0xFF7C8FF4);
-  static const primaryDark = Color(0xFF3346D3);
-  static const primarySurface = Color(
-    0xFFEEF0FD,
-  ); // lavender tint for backgrounds
+  // Shared school identity. Roles never change the brand colour.
+  static const primary = Color(0xFF1565C0);
+  static const primaryLight = Color(0xFF42A5F5);
+  static const primaryDark = Color(0xFF0D47A1);
+  static const navy = Color(0xFF082D62);
+  static const blue800 = Color(0xFF1258B6);
+  static const blue200 = Color(0xFFBBDEFB);
+  static const primarySurface = Color(0xFFE3F2FD);
 
   // Secondary - warm amber used in stat cards (food, events)
   static const secondary = Color(0xFFF9A825);
@@ -25,53 +26,36 @@ class AppColors {
   static const accentSurface = Color(0xFFFFEBEE);
 
   // Success / Warning / Danger status dots
-  static const success = Color(0xFF4CAF50);
-  static const successSurface = Color(0xFFE8F5E9);
-  static const warning = Color(0xFFFFA726);
-  static const warningSurface = Color(0xFFFFF3E0);
-  static const danger = Color(0xFFEF5350);
-  static const dangerSurface = Color(0xFFFFEBEE);
+  static const success = Color(0xFF16855B);
+  static const successSurface = Color(0xFFE8F7F0);
+  static const warning = Color(0xFFA96306);
+  static const warningSurface = Color(0xFFFFF5DC);
+  static const danger = Color(0xFFC33E45);
+  static const dangerSurface = Color(0xFFFFF0F1);
 
   // Neutrals
-  static const background = Color(0xFFF0F2FF); // off-white with lavender cast
-  static const surface = Colors.white;
-  static const surfaceVariant = Color(0xFFF5F6FF);
-  static const border = Color(0xFFE8EAF6);
-  static const divider = Color(0xFFF0F0F7);
+  static const background = Color(0xFFF4F8FC);
+  static const surface = Color(0xFFFEFEFF);
+  static const surfaceVariant = Color(0xFFEDF4FA);
+  static const border = Color(0xFFD9E5F2);
+  static const divider = Color(0xFFE3ECF6);
 
   // Text
-  static const textPrimary = Color(0xFF1A1D3F);
-  static const textSecondary = Color(0xFF6B7280);
-  static const textDisabled = Color(0xFFB0B3C6);
+  static const textPrimary = Color(0xFF10233F);
+  static const textSecondary = Color(0xFF64758B);
+  static const textDisabled = Color(0xFF8998A9);
   static const textOnPrimary = Colors.white;
 
   // Sidebar
-  static const sidebarBg = Color(0xFF4F5FEE);
+  static const sidebarBg = navy;
   static const sidebarActive = Colors.white;
-  static const sidebarInactive = Color(0xAAFFFFFF);
+  static const sidebarInactive = Color(0xB8FFFFFF);
 
-  // Role palette - matches existing AppColors.forRole usage
-  static Color forRole(String role) {
-    switch (role.trim().toUpperCase()) {
-      case 'SUPER_USER':
-        return const Color(0xFF7C3AED);
-      case 'ADMINISTRATOR':
-        return primary;
-      case 'TEACHER':
-        return const Color(0xFF0891B2);
-      case 'HEAD_TEACHER':
-        return const Color(0xFF059669);
-      case 'ACCOUNTANT':
-        return secondary;
-      case 'GUARDIAN':
-        return const Color(0xFFEC4899);
-      default:
-        return textSecondary;
-    }
-  }
+  /// Kept for older badges while enforcing the shared blue identity.
+  static Color forRole(String role) => primary;
 
   // Stat card icon-circle colours (matching the 4 dashboard stats in ref)
-  static const statBlue = Color(0xFF4F5FEE);
+  static const statBlue = primary;
   static const statOrange = Color(0xFFF9A825);
   static const statGreen = Color(0xFF4CAF50);
   static const statRed = Color(0xFFEF5350);
@@ -117,7 +101,7 @@ class AppShadows {
   /// Soft elevation - used for cards, panels
   static const List<BoxShadow> card = [
     BoxShadow(
-      color: Color(0x0D4F5FEE), // 5% primary tint
+      color: Color(0x0D1565C0),
       blurRadius: 24,
       spreadRadius: 0,
       offset: Offset(0, 4),
@@ -133,7 +117,7 @@ class AppShadows {
   /// Stronger lift - modals, dropdowns
   static const List<BoxShadow> elevated = [
     BoxShadow(
-      color: Color(0x1A4F5FEE),
+      color: Color(0x1A1565C0),
       blurRadius: 32,
       spreadRadius: 0,
       offset: Offset(0, 8),
@@ -143,7 +127,7 @@ class AppShadows {
   /// Sidebar glow
   static const List<BoxShadow> sidebar = [
     BoxShadow(
-      color: Color(0x334F5FEE),
+      color: Color(0x331565C0),
       blurRadius: 40,
       spreadRadius: 0,
       offset: Offset(4, 0),
@@ -156,11 +140,11 @@ class AppShadows {
 class AppGradients {
   AppGradients._();
 
-  /// Hero card background - indigo to lighter indigo
+  /// Hero card background using the shared school blue.
   static const LinearGradient primaryHero = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [Color(0xFF4F5FEE), Color(0xFF7C8FF4)],
+    colors: [AppColors.primaryDark, AppColors.primaryLight],
   );
 
   /// Performance chart fill - coral gradient
@@ -181,15 +165,29 @@ class AppGradients {
   static const LinearGradient chartPrimary = LinearGradient(
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
-    colors: [Color(0x334F5FEE), Color(0x004F5FEE)],
+    colors: [Color(0x331565C0), Color(0x001565C0)],
   );
 
-  /// Sidebar - solid indigo
+  /// Sidebar - dark blue with a subtle depth shift.
   static const LinearGradient sidebar = LinearGradient(
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
-    colors: [Color(0xFF4F5FEE), Color(0xFF3346D3)],
+    colors: [AppColors.primaryDark, Color(0xFF08366F)],
   );
+}
+
+/// Shared component dimensions keep dense administrative screens consistent.
+class AppSizes {
+  AppSizes._();
+
+  static const double inputHeight = 48;
+  static const double buttonHeight = 44;
+  static const double tableRowHeight = 48;
+  static const double compactTableRowHeight = 40;
+  static const double sidebarWidth = 248;
+  static const double topbarHeight = 64;
+  static const double dialogMaxWidth = 640;
+  static const double emptyStateIcon = 48;
 }
 
 // Typography scale

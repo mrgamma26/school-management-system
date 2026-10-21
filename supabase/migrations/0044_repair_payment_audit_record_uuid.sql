@@ -26,7 +26,6 @@ BEGIN
   RETURN NEW;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.record_payment_v2(
   p_student_id uuid,
   p_fee_structure_id uuid,
@@ -134,5 +133,4 @@ EXCEPTION WHEN unique_violation THEN
   RAISE EXCEPTION 'This transaction reference or receipt has already been recorded.';
 END;
 $$;
-
 NOTIFY pgrst, 'reload schema';

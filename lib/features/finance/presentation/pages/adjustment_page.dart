@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-import '../../../../core/errors/app_exception.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/widgets/app_widgets.dart'
+    show ErrorState, LoadingState;
+import '../../../../widgets/ui_kit.dart';
 import '../../data/finance_repository.dart';
 import '../../domain/models/financial_adjustment.dart';
 import '../../../authentication/presentation/providers/auth_provider.dart';
@@ -137,65 +139,75 @@ class _AdjustmentPageState extends ConsumerState<AdjustmentPage> {
   Widget build(BuildContext context) {
     final async = ref.watch(_adjustmentsProvider(widget.studentId));
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Adjustments\n${widget.studentName}'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () =>
+    return UiPage(
+      children: [
+        PageHead(
+          kicker: 'Finance',
+          title: 'Adjustments',
+          subtitle: widget.studentName,
+          actions: [
+            UiButton.secondary(
+              'Refresh',
+              icon: Icons.refresh_rounded,
+              onPressed: () =>
+                  ref.invalidate(_adjustmentsProvider(widget.studentId)),
+            ),
+            UiButton(
+              'Add Adjustment',
+              icon: Icons.add_rounded,
+              onPressed: _addAdjustment,
+            ),
+          ],
+        ),
+        async.when(
+          loading: () => const Padding(
+            padding: EdgeInsets.symmetric(vertical: 48),
+            child: LoadingState(message: 'Loading adjustments…'),
+          ),
+          error: (e, _) => ErrorState(
+            error: e,
+            onRetry: () =>
                 ref.invalidate(_adjustmentsProvider(widget.studentId)),
           ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _addAdjustment,
-        icon: const Icon(Icons.add),
-        label: const Text('Add Adjustment'),
-      ),
-      body: async.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text(friendlyError(e))),
-        data: (items) {
-          if (items.isEmpty) {
-            return const Center(child: Text('No adjustments recorded.'));
-          }
-          return ListView.separated(
-            padding: const EdgeInsets.all(8),
-            itemCount: items.length,
-            separatorBuilder: (context, index) => const Divider(height: 1),
-            itemBuilder: (_, i) {
-              final a = items[i];
-              final isDiscount = a.isDiscount;
-              return ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: isDiscount
-                      ? Colors.blue.shade50
-                      : Colors.red.shade50,
-                  child: Icon(
-                    isDiscount ? Icons.arrow_downward : Icons.arrow_upward,
-                    color: isDiscount ? Colors.blue : Colors.red,
-                  ),
+          data: (items) {
+            if (items.isEmpty) {
+              return const UiCard(
+                child: UiEmptyState(
+                  icon: Icons.tune_rounded,
+                  title: 'No adjustments recorded',
                 ),
-                title: Text(
-                  '${isDiscount ? 'Discount' : 'Penalty'}: '
-                  'MWK ${a.amount.abs().toStringAsFixed(2)}',
-                  style: TextStyle(
-                    color: isDiscount ? Colors.blue : Colors.red,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                subtitle: Text(
-                  '${a.reason}\n'
-                  '${a.createdAt.toIso8601String().substring(0, 10)}'
-                  '${a.approvedByName != null ? '  ·  ${a.approvedByName}' : ''}',
-                ),
-                isThreeLine: true,
               );
-            },
-          );
-        },
-      ),
+            }
+            return DataTableCard(
+              columns: const [
+                UiColumn('Type', width: 110),
+                UiColumn('Amount', flex: 10),
+                UiColumn('Reason', flex: 18),
+                UiColumn('Date', flex: 10, hideOnPhone: true),
+                UiColumn('Approved by', flex: 12, hideOnPhone: true),
+              ],
+              rows: [
+                for (final a in items)
+                  UiTableRow([
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: StatusPill(
+                        a.isDiscount ? 'Discount' : 'Penalty',
+                        tone: a.isDiscount
+                            ? StatusTone.info
+                            : StatusTone.warning,
+                      ),
+                    ),
+                    UiCellText(formatMwk(a.amount.abs()), bold: true),
+                    UiCellText(a.reason),
+                    UiCellText(formatUiDate(a.createdAt)),
+                    UiCellText(a.approvedByName ?? '—'),
+                  ]),
+              ],
+            );
+          },
+        ),
+      ],
     );
   }
 }

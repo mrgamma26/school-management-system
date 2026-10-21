@@ -49,7 +49,7 @@ class RegistrationStudents extends StudentRepository {
     required DateTime enrollmentDate,
   }) async {
     expect(classId, 'class-1');
-    expect(academicYearId, '2026');
+    expect(academicYearId, '2026-t1-f1');
     placements++;
     enrolled = enrollmentDate;
   }
@@ -307,11 +307,12 @@ void main() {
             find.byWidgetPredicate(
               (w) =>
                   w is DropdownButtonFormField<String> &&
-                  w.decoration.labelText == 'Academic Year (optional)',
+                  w.decoration.labelText ==
+                      'Academic year, term and form (optional)',
             ),
           );
           await tester.pumpAndSettle();
-          await tester.tap(find.text('2026/2027').last);
+          await tester.tap(find.text('2026/2027 · Term 1 · Form 1').last);
           await tester.pumpAndSettle();
           await tester.tap(
             find.byWidgetPredicate(

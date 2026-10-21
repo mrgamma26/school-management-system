@@ -22,47 +22,39 @@ ALTER TABLE public.assessment        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.grade             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.progressionreview ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.weedingreview     ENABLE ROW LEVEL SECURITY;
-
 -- ─────────────────────────────────────────────
 -- role table
 -- ─────────────────────────────────────────────
 CREATE POLICY "authenticated users can read roles"
 ON public.role FOR SELECT TO authenticated
 USING (true);
-
 CREATE POLICY "admins can manage roles"
 ON public.role FOR ALL TO authenticated
 USING (public.current_app_role() = 'SYSTEM_ADMIN');
-
 -- ─────────────────────────────────────────────
 -- rolepermission
 -- ─────────────────────────────────────────────
 CREATE POLICY "admins can manage role permissions"
 ON public.rolepermission FOR ALL TO authenticated
 USING (public.current_app_role() = 'SYSTEM_ADMIN');
-
 -- ─────────────────────────────────────────────
 -- systemuser
 -- ─────────────────────────────────────────────
 CREATE POLICY "users can read own profile"
 ON public.systemuser FOR SELECT TO authenticated
 USING (userid = auth.uid());
-
 CREATE POLICY "admins and registrars can read all users"
 ON public.systemuser FOR SELECT TO authenticated
 USING (public.current_app_role() IN ('SYSTEM_ADMIN', 'REGISTRAR'));
-
 CREATE POLICY "admins can manage system users"
 ON public.systemuser FOR ALL TO authenticated
 USING (public.current_app_role() = 'SYSTEM_ADMIN');
-
 -- ─────────────────────────────────────────────
 -- staff
 -- ─────────────────────────────────────────────
 CREATE POLICY "staff can read own record"
 ON public.staff FOR SELECT TO authenticated
 USING (userid = auth.uid());
-
 CREATE POLICY "privileged roles can read all staff"
 ON public.staff FOR SELECT TO authenticated
 USING (
@@ -70,18 +62,15 @@ USING (
     'SYSTEM_ADMIN', 'REGISTRAR', 'HEAD_TEACHER', 'ICA_DIRECTOR'
   )
 );
-
 CREATE POLICY "admins and registrars can manage staff"
 ON public.staff FOR ALL TO authenticated
 USING (public.current_app_role() IN ('SYSTEM_ADMIN', 'REGISTRAR'));
-
 -- ─────────────────────────────────────────────
 -- guardian
 -- ─────────────────────────────────────────────
 CREATE POLICY "guardian reads own profile"
 ON public.guardian FOR SELECT TO authenticated
 USING (userid = auth.uid());
-
 CREATE POLICY "privileged roles can read guardians"
 ON public.guardian FOR SELECT TO authenticated
 USING (
@@ -89,55 +78,45 @@ USING (
     'SYSTEM_ADMIN', 'REGISTRAR', 'HEAD_TEACHER'
   )
 );
-
 CREATE POLICY "admins and registrars can manage guardians"
 ON public.guardian FOR ALL TO authenticated
 USING (public.current_app_role() IN ('SYSTEM_ADMIN', 'REGISTRAR'));
-
 -- ─────────────────────────────────────────────
 -- auditlog  (append-only; no DELETE/UPDATE allowed)
 -- ─────────────────────────────────────────────
 CREATE POLICY "system admin can read audit log"
 ON public.auditlog FOR SELECT TO authenticated
 USING (public.current_app_role() = 'SYSTEM_ADMIN');
-
 CREATE POLICY "authenticated users can insert audit records"
 ON public.auditlog FOR INSERT TO authenticated
 WITH CHECK (userid = auth.uid());
-
 -- ─────────────────────────────────────────────
 -- academicyear
 -- ─────────────────────────────────────────────
 CREATE POLICY "authenticated users can read academic years"
 ON public.academicyear FOR SELECT TO authenticated
 USING (true);
-
 CREATE POLICY "admins and registrars can manage academic years"
 ON public.academicyear FOR ALL TO authenticated
 USING (public.current_app_role() IN ('SYSTEM_ADMIN', 'REGISTRAR', 'HEAD_TEACHER'));
-
 -- ─────────────────────────────────────────────
 -- class
 -- ─────────────────────────────────────────────
 CREATE POLICY "authenticated users can read classes"
 ON public.class FOR SELECT TO authenticated
 USING (true);
-
 CREATE POLICY "admins and registrars can manage classes"
 ON public.class FOR ALL TO authenticated
 USING (public.current_app_role() IN ('SYSTEM_ADMIN', 'REGISTRAR'));
-
 -- ─────────────────────────────────────────────
 -- subject
 -- ─────────────────────────────────────────────
 CREATE POLICY "authenticated users can read subjects"
 ON public.subject FOR SELECT TO authenticated
 USING (true);
-
 CREATE POLICY "admins can manage subjects"
 ON public.subject FOR ALL TO authenticated
 USING (public.current_app_role() IN ('SYSTEM_ADMIN', 'REGISTRAR', 'HEAD_TEACHER'));
-
 -- ─────────────────────────────────────────────
 -- classsubject
 -- ─────────────────────────────────────────────
@@ -150,7 +129,6 @@ USING (
       AND s.userid = auth.uid()
   )
 );
-
 CREATE POLICY "privileged roles can read all assignments"
 ON public.classsubject FOR SELECT TO authenticated
 USING (
@@ -158,11 +136,9 @@ USING (
     'SYSTEM_ADMIN', 'REGISTRAR', 'HEAD_TEACHER', 'ICA_DIRECTOR'
   )
 );
-
 CREATE POLICY "admins and registrars can manage assignments"
 ON public.classsubject FOR ALL TO authenticated
 USING (public.current_app_role() IN ('SYSTEM_ADMIN', 'REGISTRAR'));
-
 -- ─────────────────────────────────────────────
 -- student
 -- ─────────────────────────────────────────────
@@ -177,7 +153,6 @@ USING (
       AND sg.studentid = student.studentid
   )
 );
-
 CREATE POLICY "staff can read all students"
 ON public.student FOR SELECT TO authenticated
 USING (
@@ -186,18 +161,15 @@ USING (
     'HEAD_TEACHER', 'ICA_DIRECTOR'
   )
 );
-
 CREATE POLICY "registrars can manage students"
 ON public.student FOR ALL TO authenticated
 USING (public.current_app_role() IN ('SYSTEM_ADMIN', 'REGISTRAR'));
-
 -- ─────────────────────────────────────────────
 -- studentguardian
 -- ─────────────────────────────────────────────
 CREATE POLICY "registrars can manage guardian links"
 ON public.studentguardian FOR ALL TO authenticated
 USING (public.current_app_role() IN ('SYSTEM_ADMIN', 'REGISTRAR'));
-
 CREATE POLICY "guardians can read own links"
 ON public.studentguardian FOR SELECT TO authenticated
 USING (
@@ -207,14 +179,12 @@ USING (
       AND g.userid = auth.uid()
   )
 );
-
 -- ─────────────────────────────────────────────
 -- studentclasshistory
 -- ─────────────────────────────────────────────
 CREATE POLICY "registrars can manage class history"
 ON public.studentclasshistory FOR ALL TO authenticated
 USING (public.current_app_role() IN ('SYSTEM_ADMIN', 'REGISTRAR'));
-
 CREATE POLICY "staff can read class history"
 ON public.studentclasshistory FOR SELECT TO authenticated
 USING (
@@ -222,7 +192,6 @@ USING (
     'SYSTEM_ADMIN', 'REGISTRAR', 'TEACHER', 'HEAD_TEACHER', 'ICA_DIRECTOR'
   )
 );
-
 CREATE POLICY "guardians see linked student history"
 ON public.studentclasshistory FOR SELECT TO authenticated
 USING (
@@ -234,7 +203,6 @@ USING (
       AND sg.studentid = studentclasshistory.studentid
   )
 );
-
 -- ─────────────────────────────────────────────
 -- assessment
 -- ─────────────────────────────────────────────
@@ -249,7 +217,6 @@ USING (
       AND s.userid = auth.uid()
   )
 );
-
 CREATE POLICY "privileged roles can read all assessments"
 ON public.assessment FOR SELECT TO authenticated
 USING (
@@ -257,7 +224,6 @@ USING (
     'SYSTEM_ADMIN', 'REGISTRAR', 'HEAD_TEACHER', 'ICA_DIRECTOR'
   )
 );
-
 -- ─────────────────────────────────────────────
 -- grade
 -- ─────────────────────────────────────────────
@@ -273,7 +239,6 @@ USING (
       AND s.userid = auth.uid()
   )
 );
-
 CREATE POLICY "privileged roles can read all grades"
 ON public.grade FOR SELECT TO authenticated
 USING (
@@ -281,7 +246,6 @@ USING (
     'SYSTEM_ADMIN', 'HEAD_TEACHER', 'ICA_DIRECTOR'
   )
 );
-
 CREATE POLICY "guardians see grades for linked students"
 ON public.grade FOR SELECT TO authenticated
 USING (
@@ -293,7 +257,6 @@ USING (
       AND sg.studentid = grade.studentid
   )
 );
-
 -- ─────────────────────────────────────────────
 -- progressionreview
 -- ─────────────────────────────────────────────
@@ -302,11 +265,9 @@ ON public.progressionreview FOR ALL TO authenticated
 USING (
   public.current_app_role() IN ('HEAD_TEACHER', 'SYSTEM_ADMIN', 'ICA_DIRECTOR')
 );
-
 CREATE POLICY "registrars can read progression reviews"
 ON public.progressionreview FOR SELECT TO authenticated
 USING (public.current_app_role() = 'REGISTRAR');
-
 -- ─────────────────────────────────────────────
 -- weedingreview
 -- ─────────────────────────────────────────────
@@ -315,7 +276,6 @@ ON public.weedingreview FOR ALL TO authenticated
 USING (
   public.current_app_role() IN ('HEAD_TEACHER', 'SYSTEM_ADMIN', 'ICA_DIRECTOR')
 );
-
 CREATE POLICY "registrars can read weeding reviews"
 ON public.weedingreview FOR SELECT TO authenticated
 USING (public.current_app_role() = 'REGISTRAR');

@@ -1,249 +1,434 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../core/widgets/app_widgets.dart';
-import '../../../core/constants/app_strings.dart';
-import '../../authentication/presentation/providers/auth_provider.dart';
+import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Body-only content for a role dashboard - no Scaffold wrapping.
-/// Use this inside [AppShell] to avoid nested Scaffolds.
-class DashboardBody extends ConsumerWidget {
-  final String subtitle;
-  final IconData roleIcon;
-  final Color roleColor;
-  final List<Widget> children;
+import '../../../core/database/supabase_client.dart';
+import '../../../theme/app_tokens.dart';
+import '../../../widgets/ui_kit.dart';
+import '../data/dashboard_queue_data.dart';
 
-  const DashboardBody({
-    super.key,
-    required this.subtitle,
-    required this.roleIcon,
-    required this.roleColor,
-    required this.children,
+/// Tables a dashboard metric may count. A whitelist keeps the family provider
+/// from being used to probe arbitrary table names.
+const _countableTables = <String>{
+  'student',
+  'staff',
+  'guardian',
+  'systemuser',
+  'class',
+  'payment',
+  'deposit_slips',
+  'feestructure',
+  'assessment',
+  'teacher_assignments',
+  'teachercomment',
+  'result_correction_requests',
+  'progressionreview',
+  'weedingreview',
+  'notification',
+  'calendarevent',
+  'email_delivery_log',
+};
+
+/// Row count for [table] as the signed-in user sees it (RLS applies).
+final dashboardCountProvider = FutureProvider.autoDispose.family<int, String>((
+  ref,
+  table,
+) async {
+  if (!_countableTables.contains(table)) {
+    throw ArgumentError.value(table, 'table');
+  }
+  final result = await supabase
+      .from(table)
+      .select()
+      .limit(0)
+      .count(CountOption.exact);
+  return result.count;
+});
+
+/// One KPI card. [watch] reads the count so each role can choose its provider.
+class DashboardMetric {
+  final IconData icon;
+  final String label;
+  final String? note;
+  final String? route;
+  final AsyncValue<int> Function(WidgetRef ref) watch;
+
+  const DashboardMetric({
+    required this.icon,
+    required this.label,
+    required this.watch,
+    this.note,
+    this.route,
   });
+
+  /// Metric that counts the rows of a whitelisted table.
+  factory DashboardMetric.table({
+    required IconData icon,
+    required String label,
+    required String table,
+    String? note,
+    String? route,
+  }) => DashboardMetric(
+    icon: icon,
+    label: label,
+    note: note,
+    route: route,
+    watch: (ref) => ref.watch(dashboardCountProvider(table)),
+  );
+}
+
+/// A destination shown as a queue row or shortcut. [push] keeps the back stack.
+class DashboardLink {
+  final String label;
+  final String? detail;
+  final IconData icon;
+  final String route;
+  final bool push;
+
+  const DashboardLink(
+    this.label,
+    this.icon,
+    this.route, {
+    this.detail,
+    this.push = false,
+  });
+}
+
+/// A titled panel of shortcuts, e.g. "Academic structure".
+class DashboardGroup {
+  final String title;
+  final List<DashboardLink> links;
+  const DashboardGroup(this.title, this.links);
+}
+
+/// Shared layout for the six role dashboards (screens 2-7 of the redesign):
+/// page head, quick start, role charts, KPI cards, attention queue and grouped
+/// shortcuts. Header buttons live in the left menu (see role_menus.dart).
+class RoleDashboard extends ConsumerWidget {
+  final String kicker;
+  final String title;
+  final String subtitle;
+
+  /// The role's three most common tasks, shown right under the page head.
+  /// Each link's [DashboardLink.detail] is the one-line hint.
+  final List<DashboardLink> quickStart;
+
+  /// Chart panels shown first, in a two-column grid on wide screens.
+  final List<Widget> charts;
+  final List<DashboardMetric> metrics;
+  final String queueTitle;
+  final String queueNote;
+
+  /// Static shortcuts: shown when [queueRole] is null or its data cannot be
+  /// read.
+  final List<DashboardLink> queue;
+
+  /// Canonical role name (e.g. `TEACHER`) whose real records feed the queue
+  /// through [dashboardQueueProvider]. Null keeps the static [queue].
+  final String? queueRole;
+  final List<DashboardGroup> groups;
+  final Widget? footer;
+
+  const RoleDashboard({
+    super.key,
+    required this.kicker,
+    required this.title,
+    required this.subtitle,
+    required this.metrics,
+    required this.queueTitle,
+    required this.queue,
+    required this.groups,
+    this.quickStart = const [],
+    this.queueRole,
+    this.queueNote = 'Open',
+    this.charts = const [],
+    this.footer,
+  });
+
+  void _open(BuildContext context, String route, {bool push = false}) {
+    if (push) {
+      context.push(route);
+    } else {
+      context.go(route);
+    }
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final user = ref.watch(authProvider).user;
-
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+    return UiPage(
       children: [
-        _WelcomeBanner(
-          name: user?.username ?? '',
-          subtitle: subtitle,
-          roleIcon: roleIcon,
-          roleColor: roleColor,
+        PageHead(kicker: kicker, title: title, subtitle: subtitle),
+        if (quickStart.isNotEmpty) ...[
+          _QuickStartStrip(
+            actions: quickStart,
+            onOpen: (link) => _open(context, link.route, push: link.push),
+          ),
+          const SizedBox(height: 14),
+        ],
+        if (charts.isNotEmpty) ...[
+          AdaptiveGrid(
+            columns: 2,
+            mediumColumns: 1,
+            phoneColumns: 1,
+            gap: 14,
+            children: charts,
+          ),
+          const SizedBox(height: 14),
+        ],
+        AdaptiveGrid(
+          phoneColumns: 2,
+          children: [
+            for (final metric in metrics) _metricCard(context, ref, metric),
+          ],
         ),
-        const SizedBox(height: 16),
-        ...children,
+        const SizedBox(height: 14),
+        Panel(
+          title: queueTitle,
+          trailing: PanelNote(queueNote),
+          child: _queueBody(context, ref),
+        ),
+        const SizedBox(height: 14),
+        AdaptiveGrid(
+          columns: 3,
+          gap: 14,
+          children: [
+            for (final group in groups)
+              Panel(
+                title: group.title,
+                child: QueueList(
+                  items: [
+                    for (final link in group.links)
+                      QueueItem(
+                        icon: link.icon,
+                        title: link.label,
+                        onTap: () =>
+                            _open(context, link.route, push: link.push),
+                      ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+        if (footer != null) ...[const SizedBox(height: 14), footer!],
       ],
     );
   }
-}
 
-/// Shared scaffold wrapping every role dashboard.
-/// Provides a consistent AppBar, welcome banner, and sign-out action.
-/// NOTE: Only use this when NOT wrapping in AppShell (which has its own Scaffold).
-class DashboardScaffold extends ConsumerWidget {
-  final String title;
-  final String subtitle;
-  final IconData roleIcon;
-  final Color roleColor;
-  final List<Widget> children;
+  /// Static shortcut rows (the fallback queue).
+  Widget _staticQueue(BuildContext context) => QueueList(
+    items: [
+      for (final item in queue)
+        QueueItem(
+          icon: item.icon,
+          title: item.label,
+          subtitle: item.detail,
+          onTap: () => _open(context, item.route, push: item.push),
+        ),
+    ],
+  );
 
-  const DashboardScaffold({
-    super.key,
-    required this.title,
-    required this.subtitle,
-    required this.roleIcon,
-    required this.roleColor,
-    required this.children,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final user = ref.watch(authProvider).user;
-    final cs = Theme.of(context).colorScheme;
-
-    return Scaffold(
-      backgroundColor: cs.surface,
-      appBar: AppBar(
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: roleColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(8),
+  Widget _queueBody(BuildContext context, WidgetRef ref) {
+    final role = queueRole;
+    if (role == null) return _staticQueue(context);
+    final entries = ref.watch(dashboardQueueProvider(role));
+    return entries.when(
+      loading: () => const _QueueLoading(),
+      error: (_, _) => _staticQueue(context),
+      data: (items) {
+        if (items.isEmpty) return const _NothingWaiting();
+        return QueueList(
+          items: [
+            for (final item in items)
+              QueueItem(
+                icon: item.icon,
+                title: item.title,
+                subtitle: item.subtitle,
+                pill: StatusPill(item.pill, tone: item.tone),
+                onTap: () => _open(context, item.route),
               ),
-              child: Icon(Icons.school, size: 20, color: roleColor),
-            ),
-            const SizedBox(width: 10),
-            Text(AppStrings.appName),
           ],
-        ),
-        actions: [
-          if (user != null)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: RoleBadge(user.roleName),
-            ),
-          IconButton(
-            icon: const Icon(Icons.logout_outlined),
-            tooltip: 'Sign out',
-            onPressed: () => ref.read(authProvider.notifier).signOut(),
-          ),
-        ],
+        );
+      },
+    );
+  }
+
+  Widget _metricCard(
+    BuildContext context,
+    WidgetRef ref,
+    DashboardMetric metric,
+  ) {
+    final count = metric.watch(ref);
+    return MetricCard(
+      icon: metric.icon,
+      label: metric.label,
+      value: count.when(
+        data: (value) => '$value',
+        loading: () => null,
+        error: (_, _) => '—',
       ),
-      body: DashboardBody(
-        subtitle: subtitle,
-        roleIcon: roleIcon,
-        roleColor: roleColor,
-        children: children,
-      ),
+      note: count.hasError ? 'Unavailable. Reopen the dashboard to retry.' : metric.note,
+      noteTone: count.hasError ? StatusTone.warning : StatusTone.neutral,
+      onTap: metric.route == null ? null : () => _open(context, metric.route!),
     );
   }
 }
 
-// Welcome banner
+/// "Quick start": the role's three most common tasks as large flat tiles.
+class _QuickStartStrip extends StatelessWidget {
+  final List<DashboardLink> actions;
+  final void Function(DashboardLink link) onOpen;
 
-class _WelcomeBanner extends StatelessWidget {
-  final String name;
-  final String subtitle;
-  final IconData roleIcon;
-  final Color roleColor;
-
-  const _WelcomeBanner({
-    required this.name,
-    required this.subtitle,
-    required this.roleIcon,
-    required this.roleColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [roleColor, roleColor.withValues(alpha: 0.75)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Hello, ${_firstName(name)}',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.85),
-                    fontSize: 13,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Icon(roleIcon, color: Colors.white, size: 30),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _firstName(String username) {
-    if (username.isEmpty) return 'there';
-    final parts = username.split(RegExp(r'[@._\s]'));
-    final first = parts.first;
-    return first.isEmpty
-        ? username
-        : first[0].toUpperCase() + first.substring(1);
-  }
-}
-
-// Grid section
-
-class DashGrid extends StatelessWidget {
-  final String sectionTitle;
-  final IconData? sectionIcon;
-  final List<TileData> tiles;
-  final int maxColumns;
-
-  const DashGrid({
-    super.key,
-    required this.sectionTitle,
-    this.sectionIcon,
-    required this.tiles,
-    this.maxColumns = 2,
-  });
+  const _QuickStartStrip({required this.actions, required this.onOpen});
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SectionHeader(sectionTitle, icon: sectionIcon),
-        const SizedBox(height: 8),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final columns = maxColumns == 1
-                ? 1
-                : maxColumns == 3
-                ? (constraints.maxWidth >= 760 ? 3 : 1)
-                : (constraints.maxWidth >= 480 ? 2 : 1);
-            return GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: tiles.length,
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: columns,
-                mainAxisExtent: 132,
-                mainAxisSpacing: 10,
-                crossAxisSpacing: 10,
-              ),
-              itemBuilder: (context, index) {
-                final t = tiles[index];
-                return DashTile(
-                  label: t.label,
-                  icon: t.icon,
-                  color: t.color,
-                  onTap: t.onTap,
-                  badge: t.badge,
-                );
-              },
-            );
-          },
+        const Padding(
+          padding: EdgeInsets.only(bottom: 8),
+          child: Text(
+            'QUICK START',
+            style: TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.4,
+              color: AppColors.primary,
+            ),
+          ),
         ),
-        const SizedBox(height: 16),
+        AdaptiveGrid(
+          columns: 3,
+          mediumColumns: 1,
+          phoneColumns: 1,
+          children: [
+            for (final action in actions)
+              _QuickStartTile(action: action, onTap: () => onOpen(action)),
+          ],
+        ),
       ],
     );
   }
 }
 
-class TileData {
-  final String label;
-  final IconData icon;
-  final Color color;
+class _QuickStartTile extends StatelessWidget {
+  final DashboardLink action;
   final VoidCallback onTap;
-  final int? badge;
 
-  const TileData(this.label, this.icon, this.color, this.onTap, {this.badge});
+  const _QuickStartTile({required this.action, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: action.detail == null
+          ? action.label
+          : '${action.label}. ${action.detail}',
+      child: ExcludeSemantics(
+        child: UiCard(
+          onTap: onTap,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: AppColors.primarySurface,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(action.icon, size: 22, color: AppColors.primary),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      action.label,
+                      style: const TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    if (action.detail != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        action.detail!,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(
+                Icons.arrow_forward_rounded,
+                size: 18,
+                color: AppColors.textSecondary,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Shown while the queue records are loading.
+class _QueueLoading extends StatelessWidget {
+  const _QueueLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 14),
+      child: Text(
+        'Checking what is waiting…',
+        style: TextStyle(
+          fontSize: 12.5,
+          fontWeight: FontWeight.w600,
+          color: AppColors.textSecondary,
+        ),
+      ),
+    );
+  }
+}
+
+/// Friendly empty state for a queue with nothing in it.
+class _NothingWaiting extends StatelessWidget {
+  const _NothingWaiting();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 10),
+      child: Row(
+        children: [
+          Icon(
+            Icons.check_circle_outline_rounded,
+            size: 22,
+            color: AppColors.success,
+          ),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Nothing waiting. New items appear here when they need you.',
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

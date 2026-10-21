@@ -88,7 +88,7 @@ class CommunicationsRepository {
     required String staffId,
     required String subject,
     required String message,
-    bool sendEmail = false,
+    bool sendEmail = true,
   }) async {
     try {
       // Insert notification with appropriate email status

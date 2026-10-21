@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+
+import '../../../../widgets/ui_kit.dart';
 import '../../data/finance_repository.dart';
 import '../../domain/models/payment_channel.dart';
 
+/// Payment configuration: the receiving accounts, terminals and wallets that
+/// accountants can select when recording payments.
 class PaymentConfigurationPage extends StatefulWidget {
   const PaymentConfigurationPage({super.key});
 
@@ -207,111 +211,91 @@ class _PaymentConfigurationPageState extends State<PaymentConfigurationPage> {
   };
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Payment Configuration')),
-    floatingActionButton: FloatingActionButton.extended(
-      onPressed: () => _edit(),
-      icon: const Icon(Icons.add),
-      label: const Text('Add Channel'),
-    ),
-    body: _loading
-        ? const Center(child: CircularProgressIndicator())
-        : _error != null
-        ? Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text(_error!, style: const TextStyle(color: Colors.red)),
-            ),
-          )
-        : RefreshIndicator(
-            onRefresh: _load,
-            child: ListView(
-              padding: const EdgeInsets.all(20),
-              children: [
-                const Text(
-                  'Receiving Channels',
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Configure the accounts and terminals accountants can select when recording payments. Only masked identifiers are stored.',
-                ),
-                const SizedBox(height: 20),
-                for (final type in const [
-                  'BANK_TRANSFER',
-                  'CARD',
-                  'MOBILE_MONEY',
-                ]) ...[
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(_groupIcon(type)),
-                              const SizedBox(width: 10),
-                              Text(
-                                _groupTitle(type),
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                            ],
-                          ),
-                          const Divider(height: 24),
-                          if (_channels
-                              .where((c) => c.channelType == type)
-                              .isEmpty)
-                            const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 12),
-                              child: Text('No channels configured yet.'),
-                            ),
-                          for (final channel in _channels.where(
-                            (c) => c.channelType == type,
-                          ))
-                            ListTile(
-                              contentPadding: EdgeInsets.zero,
-                              title: Text(channel.displayName),
-                              subtitle: Text(
-                                '${channel.providerName} · ${channel.maskedIdentifier} · ${channel.currency}',
-                              ),
-                              leading: Icon(
-                                channel.isActive
-                                    ? Icons.check_circle
-                                    : Icons.pause_circle,
-                                color: channel.isActive
-                                    ? Colors.green
-                                    : Colors.grey,
-                              ),
-                              trailing: Wrap(
-                                spacing: 4,
-                                children: [
-                                  IconButton(
-                                    tooltip: 'Edit',
-                                    onPressed: () => _edit(channel),
-                                    icon: const Icon(Icons.edit_outlined),
-                                  ),
-                                  Switch(
-                                    value: channel.isActive,
-                                    onChanged: (active) async {
-                                      await _repo.setPaymentChannelActive(
-                                        channel.channelId,
-                                        active,
-                                      );
-                                      await _load();
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ),
-                        ],
+  Widget build(BuildContext context) => UiPage(
+    children: [
+      PageHead(
+        kicker: 'Finance',
+        title: 'Payment Configuration',
+        subtitle:
+            'Configure the accounts and terminals accountants can select when recording payments. Only masked identifiers are stored.',
+        actions: [
+          UiButton.secondary(
+            'Refresh',
+            icon: Icons.refresh_rounded,
+            onPressed: _load,
+          ),
+          UiButton('Add Channel', icon: Icons.add_rounded, onPressed: _edit),
+        ],
+      ),
+      if (_loading)
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 48),
+          child: Center(child: CircularProgressIndicator()),
+        )
+      else if (_error != null)
+        UiNotice(_error!, icon: Icons.error_outline)
+      else
+        for (final type in const ['BANK_TRANSFER', 'CARD', 'MOBILE_MONEY'])
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: Panel(
+              title: _groupTitle(type),
+              trailing: Icon(
+                _groupIcon(type),
+                size: 20,
+                color: const Color(0xFF64758B),
+              ),
+              child: _channels.where((c) => c.channelType == type).isEmpty
+                  ? const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: Text(
+                        'No channels configured yet.',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF64758B),
+                        ),
                       ),
+                    )
+                  : QueueList(
+                      items: [
+                        for (final channel in _channels.where(
+                          (c) => c.channelType == type,
+                        ))
+                          QueueItem(
+                            icon: channel.isActive
+                                ? Icons.check_circle_rounded
+                                : Icons.pause_circle_outline_rounded,
+                            title: channel.displayName,
+                            subtitle:
+                                '${channel.providerName} · ${channel.maskedIdentifier} · ${channel.currency}',
+                            pill: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  tooltip: 'Edit',
+                                  onPressed: () => _edit(channel),
+                                  icon: const Icon(
+                                    Icons.edit_outlined,
+                                    size: 19,
+                                  ),
+                                ),
+                                Switch(
+                                  value: channel.isActive,
+                                  onChanged: (active) async {
+                                    await _repo.setPaymentChannelActive(
+                                      channel.channelId,
+                                      active,
+                                    );
+                                    await _load();
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-              ],
             ),
           ),
+    ],
   );
 }

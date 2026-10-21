@@ -3,7 +3,6 @@
 
 ALTER TABLE public.rolepermission
   ADD COLUMN IF NOT EXISTS permissionname TEXT;
-
 DO $$
 BEGIN
   IF to_regclass('public.permissions') IS NOT NULL
@@ -29,6 +28,5 @@ BEGIN
         AND rp.permissionname IS NULL';
   END IF;
 END $$;
-
 CREATE INDEX IF NOT EXISTS rolepermission_roleid_idx
   ON public.rolepermission (roleid);

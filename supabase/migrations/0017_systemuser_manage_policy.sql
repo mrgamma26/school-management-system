@@ -10,7 +10,6 @@
 
 -- Drop the old policy that only allowed SYSTEM_ADMIN
 DROP POLICY IF EXISTS "admins can manage system users" ON public.systemuser;
-
 -- Create new policy allowing SUPER_USER, SYSTEM_ADMIN, and ADMINISTRATOR
 CREATE POLICY "privileged roles manage systemusers"
 ON public.systemuser FOR ALL TO authenticated

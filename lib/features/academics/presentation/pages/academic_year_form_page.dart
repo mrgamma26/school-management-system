@@ -1,369 +1,258 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/errors/app_exception.dart';
-import '../../data/academic_repository.dart';
-import '../../domain/models/academic_year.dart';
 
-/// Create or edit an academic year.
-class AcademicYearFormPage extends ConsumerStatefulWidget {
-  final AcademicYear? existing;
+import '../../../../core/errors/app_exception.dart';
+import '../../../../widgets/ui_kit.dart';
+import '../../data/academic_calendar_repository.dart';
+import '../../domain/models/academic_calendar.dart';
+import '../../../../core/navigation/close_form.dart';
+
+/// Screen 19 - Create or edit an academic year with its three terms.
+class AcademicYearFormPage extends StatefulWidget {
+  final AcademicCalendarYear? existing;
 
   const AcademicYearFormPage({this.existing, super.key});
 
   @override
-  ConsumerState<AcademicYearFormPage> createState() =>
-      _AcademicYearFormPageState();
+  State<AcademicYearFormPage> createState() => _AcademicYearFormPageState();
 }
 
-class _AcademicYearFormPageState extends ConsumerState<AcademicYearFormPage> {
+class _AcademicYearFormPageState extends State<AcademicYearFormPage> {
   final _formKey = GlobalKey<FormState>();
-  final _repo = AcademicRepository();
-
-  late final TextEditingController _yearCtrl;
+  final _repo = AcademicCalendarRepository();
+  late final TextEditingController _nameController;
+  late final List<AcademicTermDraft> _terms;
   DateTime? _startDate;
   DateTime? _endDate;
-  String _term = 'TERM_1';
-  String? _form;
-  bool _loading = false;
+  bool _makeCurrent = false;
+  bool _saving = false;
   String? _error;
-
-  bool get _isEdit => widget.existing != null;
 
   @override
   void initState() {
     super.initState();
-    final existing = widget.existing;
-
-    _yearCtrl = TextEditingController(text: existing?.year.toString() ?? '');
-    _startDate = existing?.startDate;
-    _endDate = existing?.endDate;
-    _term = existing?.term ?? 'TERM_1';
-    _form = existing?.form;
+    final year = widget.existing;
+    _nameController = TextEditingController(text: year?.name ?? '');
+    _startDate = year?.startDate;
+    _endDate = year?.endDate;
+    _makeCurrent = year?.isCurrent ?? false;
+    _terms = ['TERM_1', 'TERM_2', 'TERM_3'].map((code) {
+      AcademicTermPeriod? period;
+      for (final item in year?.terms ?? const <AcademicTermPeriod>[]) {
+        if (item.code == code) period = item;
+      }
+      return AcademicTermDraft(
+        code,
+        startDate: period?.startDate,
+        endDate: period?.endDate,
+      );
+    }).toList();
   }
 
   @override
   void dispose() {
-    _yearCtrl.dispose();
+    _nameController.dispose();
     super.dispose();
   }
 
-  Future<void> _pickDate(bool isStartDate) async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: (isStartDate ? _startDate : _endDate) ?? DateTime.now(),
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2051, 12, 31),
-    );
+  int? get _academicStartYear => parseAcademicStartYear(_nameController.text);
 
-    if (picked != null) {
-      setState(() {
-        if (isStartDate) {
-          _startDate = picked;
-          // If end date is before start date, clear it
-          if (_endDate != null && _endDate!.isBefore(picked)) {
-            _endDate = null;
-          }
-        } else {
-          _endDate = picked;
-        }
-      });
-    }
+  Future<DateTime?> _pick(DateTime? value) {
+    final startYear = _academicStartYear;
+    final firstDate = DateTime(startYear ?? 2020);
+    final lastDate = DateTime(2100, 12, 31);
+    final preferred =
+        value ??
+        (startYear == null ? DateTime.now() : DateTime(startYear, 1, 1));
+    final initialDate = preferred.isBefore(firstDate)
+        ? firstDate
+        : (preferred.isAfter(lastDate) ? lastDate : preferred);
+    return showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: firstDate,
+      lastDate: lastDate,
+    );
+  }
+
+  String? _validateDates() {
+    return validateAcademicCalendarDraft(
+      academicStartYear: _academicStartYear,
+      yearStart: _startDate,
+      yearEnd: _endDate,
+      terms: _terms,
+    );
   }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_startDate == null) {
-      setState(() => _error = 'Please select a start date.');
+    final validation = _validateDates();
+    if (validation != null) {
+      setState(() => _error = validation);
       return;
     }
-    if (_endDate == null) {
-      setState(() => _error = 'Please select an end date.');
-      return;
-    }
-    if (_endDate!.isBefore(_startDate!)) {
-      setState(() => _error = 'End date must be after start date.');
-      return;
-    }
-
-    final year = int.tryParse(_yearCtrl.text.trim());
-    if (year == null) {
-      setState(() => _error = 'Enter a valid year.');
-      return;
-    }
-
-    final overlaps = await _repo.hasOverlappingPeriod(
-      year: year,
-      form: _form!,
-      startDate: _startDate!,
-      endDate: _endDate!,
-      excludingId: widget.existing?.id,
-    );
-    if (overlaps) {
-      setState(
-        () => _error =
-            'This term overlaps another period in the same academic year.',
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await _repo.saveYear(
+        id: widget.existing?.id,
+        name: canonicalAcademicYearName(_nameController.text)!,
+        startDate: _startDate!,
+        endDate: _endDate!,
+        terms: _terms,
+        makeCurrent: _makeCurrent,
       );
-      return;
-    }
-
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-
-    try {
-      final data = {
-        'academicyear': year,
-        'term': _term,
-        'termname': _term,
-        'form': _form,
-        'startdate': _startDate!.toIso8601String().substring(0, 10),
-        'enddate': _endDate!.toIso8601String().substring(0, 10),
-      };
-
-      if (_isEdit) {
-        await _repo.updateAcademicYear(widget.existing!.id, data);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Academic year updated successfully'),
-              backgroundColor: Colors.green,
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
-      } else {
-        await _repo.createAcademicYear(data);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Academic year created successfully'),
-              backgroundColor: Colors.green,
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
-      }
-
-      if (mounted) Navigator.pop(context, true);
-    } catch (e) {
-      setState(() => _error = friendlyError(e));
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  Future<void> _delete() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete Academic Year'),
-        content: const Text(
-          'Are you sure you want to delete this academic year? This action cannot be undone.',
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Academic year and all three terms saved.'),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
-
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-
-    try {
-      await _repo.deleteAcademicYear(widget.existing!.id);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Academic year deleted successfully'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
-        );
-        Navigator.pop(context, true);
-      }
-    } catch (e) {
-      setState(() => _error = e.toString());
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error deleting: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
+      );
+      closeForm(context, '/academics/years', true);
+    } catch (error) {
+      setState(() => _error = friendlyError(error));
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() => _saving = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(_isEdit ? 'Edit Academic Year' : 'Create Academic Year'),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            children: [
-              TextFormField(
-                controller: _yearCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Starting year',
-                  helperText:
-                      'For example, 2026 creates academic year 2026/2027.',
-                ),
-                keyboardType: TextInputType.number,
-                onChanged: (_) {
-                  setState(() {});
-                },
-                validator: (v) {
-                  if (v == null || v.trim().isEmpty) return 'Year is required.';
-                  final year = int.tryParse(v.trim());
-                  if (year == null || year < 2020 || year > 2050) {
-                    return 'Enter a valid year between 2020-2050.';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-
-              DropdownButtonFormField<String>(
-                initialValue: _form,
-                decoration: const InputDecoration(labelText: 'Form *'),
-                items: const [
-                  DropdownMenuItem(value: 'FORM_1', child: Text('Form 1')),
-                  DropdownMenuItem(value: 'FORM_2', child: Text('Form 2')),
-                  DropdownMenuItem(value: 'FORM_3', child: Text('Form 3')),
-                  DropdownMenuItem(value: 'FORM_4', child: Text('Form 4')),
-                ],
-                validator: (value) => value == null
-                    ? 'Select the form this period applies to.'
-                    : null,
-                onChanged: (value) => setState(() => _form = value),
-              ),
-              const SizedBox(height: 16),
-
-              if (int.tryParse(_yearCtrl.text) case final int year)
-                ListTile(
-                  title: const Text('Academic year'),
-                  subtitle: Text(formatAcademicYear(year)),
-                ),
-              DropdownButtonFormField<String>(
-                initialValue: _term,
-                decoration: const InputDecoration(labelText: 'Term *'),
-                items: const [
-                  DropdownMenuItem(value: 'TERM_1', child: Text('Term 1')),
-                  DropdownMenuItem(value: 'TERM_2', child: Text('Term 2')),
-                  DropdownMenuItem(value: 'TERM_3', child: Text('Term 3')),
-                ],
-                onChanged: (value) => setState(() => _term = value!),
-              ),
-              const SizedBox(height: 16),
-
-              // Start Date
-              GestureDetector(
-                onTap: () => _pickDate(true),
-                child: InputDecorator(
-                  decoration: const InputDecoration(
-                    labelText: 'Start Date',
-                    suffixIcon: Icon(Icons.calendar_today),
-                  ),
-                  child: Text(
-                    _startDate?.toIso8601String().substring(0, 10) ??
-                        'Select start date',
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // End Date
-              GestureDetector(
-                onTap: () => _pickDate(false),
-                child: InputDecorator(
-                  decoration: const InputDecoration(
-                    labelText: 'End Date',
-                    suffixIcon: Icon(Icons.calendar_today),
-                  ),
-                  child: Text(
-                    _endDate?.toIso8601String().substring(0, 10) ??
-                        'Select end date',
-                  ),
-                ),
-              ),
-
-              if (_error != null) ...[
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.red.withValues(alpha: 0.1),
-                    border: Border.all(
-                      color: Colors.red.withValues(alpha: 0.5),
-                    ),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    _error!,
-                    style: const TextStyle(color: Colors.red, fontSize: 14),
-                  ),
-                ),
-              ],
-
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _loading ? null : _submit,
-                  child: _loading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(
-                          _isEdit
-                              ? 'Update Academic Year'
-                              : 'Create Academic Year',
-                        ),
-                ),
-              ),
-              if (_isEdit) ...[
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: _loading ? null : _delete,
-                    icon: const Icon(Icons.delete_outline),
-                    label: const Text('Delete Academic Year'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.red,
-                      side: const BorderSide(color: Colors.red),
+    return FormPageLayout(
+      kicker: 'Academics',
+      title: widget.existing == null
+          ? 'Create Academic Year'
+          : 'Edit Academic Year',
+      subtitle: 'Set the year and all three valid non-overlapping terms.',
+      formTitle: 'Year details',
+      saving: _saving,
+      saveLabel: 'Save academic year',
+      onSave: _submit,
+      error: _error,
+      guideTitle: 'Term rules:',
+      guide:
+          'All three terms are required, must stay inside the year, and cannot overlap.',
+      sideTitle: 'Checks before saving',
+      side: const [
+        CheckRow(label: 'One year serves Forms 1 to 4', checked: true),
+        CheckRow(label: 'Terms 1, 2 and 3 are all required', checked: true),
+        CheckRow(label: 'Term dates stay inside the year', checked: true),
+        CheckRow(label: 'Terms cannot overlap', checked: true),
+      ],
+      form: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            FieldGrid(
+              children: [
+                FullWidth(
+                  child: UiField(
+                    label: 'Academic year name *',
+                    child: TextFormField(
+                      controller: _nameController,
+                      decoration: const InputDecoration(hintText: '2026/2027'),
+                      onChanged: (_) => setState(() {}),
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Academic year name is required.';
+                        }
+                        final year = parseAcademicStartYear(value);
+                        if (year == null || year < 2020 || year > 2099) {
+                          return 'Enter a year such as 2027 or 2027/2028.';
+                        }
+                        return null;
+                      },
                     ),
                   ),
                 ),
+                _DateField(
+                  label: 'Year starts *',
+                  value: _startDate,
+                  onTap: () async {
+                    final value = await _pick(_startDate);
+                    if (value != null) setState(() => _startDate = value);
+                  },
+                ),
+                _DateField(
+                  label: 'Year ends *',
+                  value: _endDate,
+                  onTap: () async {
+                    final value = await _pick(_endDate);
+                    if (value != null) setState(() => _endDate = value);
+                  },
+                ),
               ],
-              const SizedBox(height: 32),
-            ],
-          ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Term dates',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 12),
+            FieldGrid(
+              children: [
+                for (final term in _terms) ...[
+                  _DateField(
+                    label: '${term.label} starts *',
+                    value: term.startDate,
+                    onTap: () async {
+                      final value = await _pick(term.startDate);
+                      if (value != null) setState(() => term.startDate = value);
+                    },
+                  ),
+                  _DateField(
+                    label: '${term.label} ends *',
+                    value: term.endDate,
+                    onTap: () async {
+                      final value = await _pick(term.endDate);
+                      if (value != null) setState(() => term.endDate = value);
+                    },
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 12),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Make this the current academic year'),
+              subtitle: const Text(
+                'This replaces the previously current year after validation.',
+              ),
+              value: _makeCurrent,
+              onChanged: (value) => setState(() => _makeCurrent = value),
+            ),
+          ],
         ),
       ),
     );
   }
+}
+
+class _DateField extends StatelessWidget {
+  final String label;
+  final DateTime? value;
+  final VoidCallback onTap;
+
+  const _DateField({
+    required this.label,
+    required this.value,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) => UiField(
+    label: label,
+    child: InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: onTap,
+      child: InputDecorator(
+        decoration: const InputDecoration(
+          suffixIcon: Icon(Icons.calendar_today_outlined, size: 18),
+        ),
+        child: Text(value == null ? 'Select date' : formatUiDate(value)),
+      ),
+    ),
+  );
 }

@@ -57,12 +57,12 @@ class AppColors {
   static const card = Colors.white;
 
   // role badge colours
-  static const roleSuperUser = Color(0xFF6A1B9A);
+  static const roleSuperUser = primary;
   static const roleAdmin = Color(0xFF1565C0);
-  static const roleTeacher = Color(0xFF00695C);
-  static const roleHeadTeacher = Color(0xFF0277BD);
-  static const roleAccountant = Color(0xFF4E342E);
-  static const roleGuardian = Color(0xFF558B2F);
+  static const roleTeacher = primary;
+  static const roleHeadTeacher = primary;
+  static const roleAccountant = primary;
+  static const roleGuardian = primary;
 
   static Color forRole(String role) {
     switch (role.toUpperCase()) {

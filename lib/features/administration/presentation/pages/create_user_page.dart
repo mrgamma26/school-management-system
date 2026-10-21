@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/utils/form_state_persistence.dart';
 import '../../../../widgets/skeleton_loader.dart';
+import '../../../../widgets/ui_kit.dart';
 import '../../../authentication/presentation/providers/auth_provider.dart';
 import '../../../users/data/repositories/user_repository.dart';
 
@@ -29,6 +30,7 @@ String _generatePassword() {
   return chars.join();
 }
 
+/// Screen 16 - Create a staff user account.
 class CreateUserPage extends ConsumerStatefulWidget {
   const CreateUserPage({super.key});
 
@@ -238,57 +240,61 @@ class _CreateUserPageState extends ConsumerState<CreateUserPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Create User')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: AutofillGroup(
-          child: Form(
-            key: _formKey,
-            onChanged: _scheduleDraft,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (_restoringDraft || _rolesLoading) ...[
-                  const SkeletonFormField(),
-                  const SizedBox(height: 12),
-                  const SkeletonFormField(),
-                ] else ...[
-                  if (_draftSaved && !_loading)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Text(
-                        'Draft saved on this device',
-                        style: Theme.of(context).textTheme.labelSmall,
-                      ),
+    final ready = !(_restoringDraft || _rolesLoading);
+    return AutofillGroup(
+      child: Form(
+        key: _formKey,
+        onChanged: _scheduleDraft,
+        child: UiPage(
+          maxWidth: 980,
+          children: [
+            PageHead(
+              kicker: 'Users & Access',
+              title: 'Create User Account',
+              subtitle:
+                  'Create a staff account and send a secure first-login password. Guardians are created when you register a student.',
+              actions: [
+                UiButton.secondary(
+                  'Cancel',
+                  onPressed: () => context.go('/admin/users'),
+                ),
+                UiButton(
+                  _loading ? 'Creating…' : 'Create Account',
+                  icon: Icons.person_add_alt,
+                  onPressed: ready && !_loading ? _submit : null,
+                ),
+              ],
+            ),
+            if (!ready) ...[
+              const SkeletonFormField(),
+              const SizedBox(height: 12),
+              const SkeletonFormField(),
+            ] else ...[
+              if (_draftSaved && !_loading)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 10),
+                  child: Text(
+                    'Draft saved on this device',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF64758B),
                     ),
-                  // Staff creation info
-                  const Text(
-                    'Create Staff Member',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Guardians are created automatically when you register a student.',
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Email
-                  _textField(
-                    _emailCtrl,
-                    'Email address',
-                    required: true,
-                    keyboardType: TextInputType.emailAddress,
-                    hint: 'user@school.com',
-                  ),
-
-                  // Role dropdown - show only staff roles
-                  if (_roles.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    DropdownButtonFormField<String>(
+                ),
+              _section('Account', [
+                _textField(
+                  _emailCtrl,
+                  'Email address',
+                  required: true,
+                  keyboardType: TextInputType.emailAddress,
+                  hint: 'user@school.com',
+                ),
+                if (_roles.isNotEmpty)
+                  UiField(
+                    label: 'Role *',
+                    child: DropdownButtonFormField<String>(
                       initialValue: _selectedRoleId,
-                      decoration: const InputDecoration(labelText: 'Role *'),
                       items: _roles
                           .where((r) {
                             final rn = (r['rolename'] as String).toUpperCase();
@@ -305,142 +311,56 @@ class _CreateUserPageState extends ConsumerState<CreateUserPage> {
                       validator: (v) =>
                           v == null ? 'Please select a role.' : null,
                     ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.info_outline,
-                          size: 14,
-                          color: Colors.grey,
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            'Need a role that is not listed? Go to User Management -> '
-                            'select any user -> Manage Permissions to create new roles.',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey.shade600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-
-                  const SizedBox(height: 16),
-                  const Divider(),
-                  const Text(
-                    'Personal Information',
-                    style: TextStyle(fontWeight: FontWeight.bold),
                   ),
-                  const SizedBox(height: 8),
-
-                  _textField(_firstNameCtrl, 'First Name', required: true),
-                  _textField(_middleNameCtrl, 'Middle Name'),
-                  _textField(_lastNameCtrl, 'Last Name', required: true),
-
-                  DropdownButtonFormField<String>(
+              ]),
+              _section('Personal information', [
+                _textField(_firstNameCtrl, 'First Name', required: true),
+                _textField(_middleNameCtrl, 'Middle Name'),
+                _textField(_lastNameCtrl, 'Last Name', required: true),
+                UiField(
+                  label: 'Gender',
+                  child: DropdownButtonFormField<String>(
                     initialValue: _gender,
-                    decoration: const InputDecoration(labelText: 'Gender'),
                     items: const [
                       DropdownMenuItem(value: 'MALE', child: Text('Male')),
                       DropdownMenuItem(value: 'FEMALE', child: Text('Female')),
                     ],
                     onChanged: (v) => setState(() => _gender = v!),
                   ),
-
-                  // Staff-specific fields
-                  const SizedBox(height: 16),
-                  const Divider(),
-                  const Text(
-                    'Staff Information',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  _textField(
-                    _employeeNumberCtrl,
-                    'Employee Number',
-                    required: true,
-                  ),
-
-                  // Password note
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.blue.shade200),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.lock_outline,
-                          color: Colors.blue.shade700,
-                          size: 18,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            'A secure temporary password will be generated and shown to you '
-                            'after the account is created. The user will be required to '
-                            'change it on first login.',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.blue.shade800,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  if (_error != null) ...[
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.red.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        _error!,
-                        style: TextStyle(
-                          color: Colors.red.shade800,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ),
-                  ],
-
-                  const SizedBox(height: 24),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: _loading ? null : _submit,
-                      icon: _loading
-                          ? const SizedBox(
-                              height: 16,
-                              width: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(Icons.person_add),
-                      label: Text(_loading ? 'Creating...' : 'Create Account'),
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-                ],
-              ],
-            ),
-          ),
+                ),
+              ]),
+              _section('Staff information', [
+                _textField(
+                  _employeeNumberCtrl,
+                  'Employee Number',
+                  required: true,
+                ),
+              ]),
+              const InlineGuide(
+                title: 'Sign-in:',
+                text:
+                    'A secure temporary password will be generated and emailed to the user (it is also shown to you once, in case the email fails). The user must choose their own password on first login.',
+              ),
+              if (_roles.isNotEmpty)
+                const InlineGuide(
+                  text:
+                      'Need a role that is not listed? Open any user in User Accounts and choose Manage Permissions.',
+                ),
+              if (_error != null) UiNotice(_error!, icon: Icons.error_outline),
+            ],
+          ],
         ),
       ),
     );
   }
+
+  Widget _section(String title, List<Widget> fields) => Padding(
+    padding: const EdgeInsets.only(bottom: 14),
+    child: FormPanel(
+      title: title,
+      child: FieldGrid(children: fields),
+    ),
+  );
 
   Widget _textField(
     TextEditingController controller,
@@ -450,8 +370,8 @@ class _CreateUserPageState extends ConsumerState<CreateUserPage> {
     int? maxLines,
     String? hint,
   }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+    return UiField(
+      label: label,
       child: TextFormField(
         controller: controller,
         autofillHints: switch (label) {
@@ -465,7 +385,7 @@ class _CreateUserPageState extends ConsumerState<CreateUserPage> {
         },
         keyboardType: keyboardType,
         maxLines: maxLines ?? 1,
-        decoration: InputDecoration(labelText: label, hintText: hint),
+        decoration: InputDecoration(hintText: hint),
         validator: required
             ? (v) =>
                   (v == null || v.trim().isEmpty) ? '$label is required.' : null

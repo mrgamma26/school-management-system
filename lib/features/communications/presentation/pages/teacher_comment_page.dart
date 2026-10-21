@@ -8,6 +8,7 @@ import '../../../authentication/presentation/providers/auth_provider.dart';
 import '../../../academics/data/academic_repository.dart';
 import '../../../students/domain/student.dart';
 import '../../../students/data/student_repository.dart';
+import '../../../../widgets/ui_kit.dart';
 
 // Providers
 
@@ -129,8 +130,10 @@ class _TeacherCommentPageState extends ConsumerState<TeacherCommentPage> {
     final staffAsync = ref.watch(_tcStaffIdProvider);
     final user = ref.watch(authProvider).user;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Student Comments'), actions: const []),
+    return PageFrame(
+      kicker: 'Assessments',
+      title: 'Student Comments',
+      subtitle: 'One narrative comment per student per academic year.',
       body: Column(
         children: [
           Padding(

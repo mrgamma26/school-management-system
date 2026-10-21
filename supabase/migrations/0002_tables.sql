@@ -12,7 +12,6 @@ CREATE TABLE IF NOT EXISTS public.role (
   createdat   TIMESTAMPTZ NOT NULL DEFAULT now(),
   updatedat   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
 -- ─────────────────────────────────────────────
 -- rolepermission
 -- ─────────────────────────────────────────────
@@ -22,7 +21,6 @@ CREATE TABLE IF NOT EXISTS public.rolepermission (
   permissionname TEXT NOT NULL,
   createdat      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
 -- ─────────────────────────────────────────────
 -- systemuser  (linked to auth.users via userid)
 -- ─────────────────────────────────────────────
@@ -35,7 +33,6 @@ CREATE TABLE IF NOT EXISTS public.systemuser (
   createdat          TIMESTAMPTZ NOT NULL DEFAULT now(),
   updatedat          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
 -- ─────────────────────────────────────────────
 -- staff
 -- ─────────────────────────────────────────────
@@ -51,7 +48,6 @@ CREATE TABLE IF NOT EXISTS public.staff (
   createdat      TIMESTAMPTZ NOT NULL DEFAULT now(),
   updatedat      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
 -- ─────────────────────────────────────────────
 -- guardian
 -- ─────────────────────────────────────────────
@@ -68,7 +64,6 @@ CREATE TABLE IF NOT EXISTS public.guardian (
   createdat       TIMESTAMPTZ NOT NULL DEFAULT now(),
   updatedat       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
 -- ─────────────────────────────────────────────
 -- auditlog
 -- ─────────────────────────────────────────────
@@ -84,7 +79,6 @@ CREATE TABLE IF NOT EXISTS public.auditlog (
   reason        TEXT,
   createdat     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
 -- ─────────────────────────────────────────────
 -- academicyear
 -- ─────────────────────────────────────────────
@@ -92,14 +86,12 @@ CREATE TABLE IF NOT EXISTS public.academicyear (
   academicyearid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   academicyear   INTEGER NOT NULL,
   term           public.term_type NOT NULL,
-  form           TEXT CHECK (form IN ('FORM_1', 'FORM_2', 'FORM_3', 'FORM_4')),
   startdate      DATE NOT NULL,
   enddate        DATE NOT NULL,
   createdat      TIMESTAMPTZ NOT NULL DEFAULT now(),
   updatedat      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (academicyear, term, form)
+  UNIQUE (academicyear, term)
 );
-
 -- ─────────────────────────────────────────────
 -- class
 -- ─────────────────────────────────────────────
@@ -110,7 +102,6 @@ CREATE TABLE IF NOT EXISTS public.class (
   createdat TIMESTAMPTZ NOT NULL DEFAULT now(),
   updatedat TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
 -- ─────────────────────────────────────────────
 -- subject
 -- ─────────────────────────────────────────────
@@ -121,7 +112,6 @@ CREATE TABLE IF NOT EXISTS public.subject (
   createdat   TIMESTAMPTZ NOT NULL DEFAULT now(),
   updatedat   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
 -- ─────────────────────────────────────────────
 -- classsubject  (teaching assignment)
 -- ─────────────────────────────────────────────
@@ -135,7 +125,6 @@ CREATE TABLE IF NOT EXISTS public.classsubject (
   updatedat      TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (classid, subjectid, academicyearid)
 );
-
 -- ─────────────────────────────────────────────
 -- student
 -- ─────────────────────────────────────────────
@@ -147,11 +136,10 @@ CREATE TABLE IF NOT EXISTS public.student (
   gender           public.gender_type NOT NULL,
   dateofbirth      DATE NOT NULL,
   physicaladdress  TEXT,
-  enrollmentstatus public.student_status_enum NOT NULL DEFAULT 'ENROLLED',
+  enrollmentstatus public.enrollment_status NOT NULL DEFAULT 'ENROLLED',
   createdat        TIMESTAMPTZ NOT NULL DEFAULT now(),
   updatedat        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
 -- ─────────────────────────────────────────────
 -- studentguardian  (many-to-many)
 -- ─────────────────────────────────────────────
@@ -163,7 +151,6 @@ CREATE TABLE IF NOT EXISTS public.studentguardian (
   createdat         TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (studentid, guardianid)
 );
-
 -- ─────────────────────────────────────────────
 -- studentclasshistory
 -- ─────────────────────────────────────────────
@@ -177,7 +164,6 @@ CREATE TABLE IF NOT EXISTS public.studentclasshistory (
   createdat      TIMESTAMPTZ NOT NULL DEFAULT now(),
   updatedat      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
 -- ─────────────────────────────────────────────
 -- assessment
 -- ─────────────────────────────────────────────
@@ -190,7 +176,6 @@ CREATE TABLE IF NOT EXISTS public.assessment (
   createdat      TIMESTAMPTZ NOT NULL DEFAULT now(),
   updatedat      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
 -- ─────────────────────────────────────────────
 -- grade
 -- ─────────────────────────────────────────────
@@ -205,7 +190,6 @@ CREATE TABLE IF NOT EXISTS public.grade (
   updatedat   TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (assessmentid, studentid)
 );
-
 -- ─────────────────────────────────────────────
 -- progressionreview
 -- ─────────────────────────────────────────────
@@ -220,7 +204,6 @@ CREATE TABLE IF NOT EXISTS public.progressionreview (
   updatedat      TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (studentid, academicyearid)
 );
-
 -- ─────────────────────────────────────────────
 -- weedingreview
 -- ─────────────────────────────────────────────

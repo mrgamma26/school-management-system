@@ -67,6 +67,7 @@ class Payment {
 /// Valid payment methods matching the [payment_method_enum] in the database.
 const List<String> kPaymentMethods = [
   'CASH',
+  'DEPOSIT',
   'BANK_TRANSFER',
   'MOBILE_MONEY',
   'CARD',

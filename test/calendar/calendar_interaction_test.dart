@@ -71,7 +71,8 @@ void main() {
 
   Future<void> open(WidgetTester tester, String role, FakeCalendar repo) async {
     tester.view.resetPhysicalSize();
-    tester.view.physicalSize = const Size(1200, 1400);
+    // Below calendarSidePanelBreakpoint (1100): the day-dialog layout.
+    tester.view.physicalSize = const Size(1000, 1400);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);

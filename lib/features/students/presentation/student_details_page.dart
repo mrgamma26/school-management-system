@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/errors/app_exception.dart';
 import 'package:go_router/go_router.dart';
+
+import '../../../core/auth/school_role_access.dart';
+import '../../../core/errors/app_exception.dart';
+import '../../../core/widgets/app_widgets.dart'
+    show ErrorState, LoadingState;
+import '../../../widgets/ui_kit.dart';
 import '../../authentication/presentation/providers/auth_provider.dart';
 import '../data/student_repository.dart';
 import '../domain/student.dart';
-import '../../../widgets/skeleton_loader.dart';
 
-/// Shows full student details with navigation to edit, guardian links
-/// and class history.
+/// Screen 10 - Student profile: key information and links to the related
+/// records (account, guardians, subjects, class history).
 class StudentDetailsPage extends ConsumerStatefulWidget {
   final String studentId;
   const StudentDetailsPage({required this.studentId, super.key});
@@ -47,138 +51,122 @@ class _StudentDetailsPageState extends ConsumerState<StudentDetailsPage> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(
-        body: SkeletonListLoader(itemCount: 4, itemHeight: 100),
+      return const UiPage(
+        children: [
+          Padding(
+            padding: EdgeInsets.symmetric(vertical: 64),
+            child: LoadingState(message: 'Loading student…'),
+          ),
+        ],
       );
     }
     if (_error != null) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('Student'),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.home_outlined),
-              tooltip: 'Home',
-              onPressed: () => context.go('/students'),
-            ),
-          ],
-        ),
-        body: Center(child: Text(_error!)),
+      return UiPage(
+        children: [
+          PageHead(
+            kicker: 'People',
+            title: 'Student',
+            actions: [
+              UiButton.secondary(
+                'Back to students',
+                icon: Icons.arrow_back_rounded,
+                onPressed: () => context.go('/students'),
+              ),
+            ],
+          ),
+          ErrorState(error: _error!, onRetry: _load),
+        ],
       );
     }
 
     final s = _student!;
-    final role = ref.watch(authProvider).user?.roleName.trim().toUpperCase();
-    final canManageAccounts = role == 'ACCOUNTANT' || role == 'SUPER_USER';
+    final role = ref.watch(authProvider).user?.roleName ?? '';
+    final canManageAccounts = canRecordStudentPayments(role);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(s.fullName),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.home_outlined),
-            tooltip: 'Home',
-            onPressed: () => context.go('/students'),
-          ),
-          IconButton(
-            icon: const Icon(Icons.edit),
-            tooltip: 'Edit',
-            onPressed: () async {
-              await context.push<bool>('/students/${s.studentId}/edit');
-              _load();
-            },
-          ),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          _infoCard(s),
-          const SizedBox(height: 12),
-          if (canManageAccounts)
-            _actionTile(
-              context,
-              icon: Icons.account_balance_wallet_outlined,
-              title: 'Student Account & Payments',
-              onTap: () => context.go(
-                '/finance/students/${s.studentId}/account'
-                '?name=${Uri.encodeComponent(s.fullName)}',
-              ),
+    return UiPage(
+      children: [
+        PageHead(
+          kicker: 'People',
+          title: 'Student Profile',
+          subtitle: 'One student record with guardians, subjects and history.',
+          actions: [
+            UiButton.secondary(
+              'Back to students',
+              icon: Icons.arrow_back_rounded,
+              onPressed: () => context.go('/students'),
             ),
-          _actionTile(
-            context,
-            icon: Icons.family_restroom,
-            title: 'Manage Guardians',
-            onTap: () => context.go('/students/${s.studentId}/link-guardian'),
-          ),
-          _actionTile(
-            context,
-            icon: Icons.menu_book_outlined,
-            title: 'Manage Subjects',
-            onTap: () => context.go('/students/${s.studentId}/subjects'),
-          ),
-          _actionTile(
-            context,
-            icon: Icons.history_edu,
-            title: 'Class History',
-            onTap: () => context.go('/students/${s.studentId}/class-history'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _infoCard(Student s) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _row('Full Name', s.fullName),
-            _row('Gender', s.gender),
-            _row(
-              'Date of Birth',
-              s.dateOfBirth.toIso8601String().substring(0, 10),
+            UiButton(
+              'Edit',
+              icon: Icons.edit_outlined,
+              onPressed: () async {
+                await context.push<bool>('/students/${s.studentId}/edit');
+                _load();
+              },
             ),
-            _row('Enrollment Status', s.enrollmentStatus),
-            if (s.physicalAddress != null) _row('Address', s.physicalAddress!),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _row(String label, String value) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 4),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 140,
-          child: Text(
-            label,
-            style: const TextStyle(fontWeight: FontWeight.w600),
+        ProfileHero(
+          name: s.fullName,
+          subtitle:
+              '${s.gender} · Born ${formatUiDate(s.dateOfBirth)} · ID ${s.studentId.substring(0, 8).toUpperCase()}',
+          pill: StatusPill.auto(s.enrollmentStatus),
+        ),
+        const SizedBox(height: 14),
+        SplitLayout(
+          mainFlex: 100,
+          sideFlex: 100,
+          main: Panel(
+            title: 'Key information',
+            child: Column(
+              children: [
+                DetailLine('Full name', s.fullName),
+                DetailLine('Gender', s.gender),
+                DetailLine('Date of birth', formatUiDate(s.dateOfBirth)),
+                DetailLine('Enrollment status', s.enrollmentStatus),
+                if (s.physicalAddress != null && s.physicalAddress!.isNotEmpty)
+                  DetailLine('Address', s.physicalAddress!),
+              ],
+            ),
+          ),
+          side: Panel(
+            title: 'Related records',
+            child: QueueList(
+              items: [
+                if (canManageAccounts)
+                  QueueItem(
+                    icon: Icons.account_balance_wallet_outlined,
+                    title: 'Student Account & Payments',
+                    subtitle: 'Balance, ledger and payment capture',
+                    onTap: () => context.go(
+                      '/finance/students/${s.studentId}/account'
+                      '?name=${Uri.encodeComponent(s.fullName)}',
+                    ),
+                  ),
+                QueueItem(
+                  icon: Icons.family_restroom_outlined,
+                  title: 'Manage Guardians',
+                  subtitle: 'Link or unlink guardians',
+                  onTap: () =>
+                      context.go('/students/${s.studentId}/link-guardian'),
+                ),
+                QueueItem(
+                  icon: Icons.menu_book_outlined,
+                  title: 'Manage Subjects',
+                  subtitle: 'Subject enrollments for this student',
+                  onTap: () => context.go('/students/${s.studentId}/subjects'),
+                ),
+                QueueItem(
+                  icon: Icons.history_edu_outlined,
+                  title: 'Class History',
+                  subtitle: 'Classes by year, promotions and transfers',
+                  onTap: () =>
+                      context.go('/students/${s.studentId}/class-history'),
+                ),
+              ],
+            ),
           ),
         ),
-        Expanded(child: Text(value)),
       ],
-    ),
-  );
-
-  Widget _actionTile(
-    BuildContext context, {
-    required IconData icon,
-    required String title,
-    required VoidCallback onTap,
-  }) {
-    return Card(
-      child: ListTile(
-        leading: Icon(icon),
-        title: Text(title),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: onTap,
-      ),
     );
   }
 }

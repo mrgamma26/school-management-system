@@ -3,6 +3,8 @@ import '../../../../core/errors/app_exception.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/database/supabase_client.dart';
 import '../../../authentication/presentation/providers/auth_provider.dart';
+import '../../../../widgets/ui_kit.dart';
+import '../widgets/guardian_report_gate.dart';
 
 // ── Providers ─────────────────────────────────────────────────────────────────
 
@@ -104,8 +106,11 @@ class _GuardianAcademicProgressPageState
     final childrenAsync = ref.watch(_progressChildrenProvider);
     final yearsAsync = ref.watch(_progressYearsProvider);
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Academic Progress'), actions: const []),
+    return PageFrame(
+      kicker: 'Guardian · Results',
+      title: 'Published Results',
+      subtitle:
+          'Term performance for a linked student. Shown only when the account balance is clear.',
       body: childrenAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text(friendlyError(e))),
@@ -215,11 +220,14 @@ class _GuardianAcademicProgressPageState
                           style: TextStyle(color: Colors.grey),
                         ),
                       )
-                    : _ProgressView(
+                    : GuardianReportGate(
                         studentId: _studentId!,
-                        studentName: _studentName!,
-                        yearId: _yearId!,
-                        yearLabel: _yearLabel!,
+                        child: GuardianProgressView(
+                          studentId: _studentId!,
+                          studentName: _studentName!,
+                          yearId: _yearId!,
+                          yearLabel: _yearLabel!,
+                        ),
                       ),
               ),
             ],
@@ -232,13 +240,14 @@ class _GuardianAcademicProgressPageState
 
 // ── Progress view ─────────────────────────────────────────────────────────────
 
-class _ProgressView extends ConsumerWidget {
+class GuardianProgressView extends ConsumerWidget {
   final String studentId;
   final String studentName;
   final String yearId;
   final String yearLabel;
 
-  const _ProgressView({
+  const GuardianProgressView({
+    super.key,
     required this.studentId,
     required this.studentName,
     required this.yearId,

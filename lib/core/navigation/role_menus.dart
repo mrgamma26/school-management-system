@@ -45,12 +45,11 @@ const _academics = MenuNode.group('Academics', Icons.school_outlined, [
     Icons.calendar_today_outlined,
     '/academics/years',
   ),
-  MenuNode.link('Classes', Icons.class_outlined, '/academics/classes'),
   MenuNode.link('Subjects', Icons.menu_book_outlined, '/academics/subjects'),
   MenuNode.link(
-    'Class Assignments',
-    Icons.assignment_ind_outlined,
-    '/academics/assignments',
+    'Class Setup',
+    Icons.account_tree_outlined,
+    '/academics/class-setup',
   ),
 ]);
 
@@ -72,15 +71,37 @@ const _finance = MenuNode.group('Finance', Icons.payments_outlined, [
     Icons.tune_outlined,
     '/finance/payment-configuration',
   ),
+  MenuNode.link(
+    'Deposit Slips',
+    Icons.receipt_outlined,
+    '/finance/deposit-slips',
+  ),
+  MenuNode.link(
+    'Payment Arrangements',
+    Icons.event_repeat_outlined,
+    '/finance/arrangements',
+  ),
+  MenuNode.link('Payment Reversals', Icons.undo_outlined, '/finance/reversals'),
+]);
+
+const _results = MenuNode.group('Results', Icons.fact_check_outlined, [
+  MenuNode.link(
+    'Review Workspace',
+    Icons.rate_review_outlined,
+    '/results/review',
+  ),
+  MenuNode.link(
+    'Correction Requests',
+    Icons.rule_outlined,
+    '/results/corrections',
+  ),
+  MenuNode.link('Publish Results', Icons.publish_outlined, '/results/publish'),
 ]);
 
 const _commonNodes = [
   MenuNode.link('Calendar', Icons.calendar_month_outlined, '/calendar'),
-  MenuNode.link(
-    'Notifications',
-    Icons.notifications_outlined,
-    '/notifications',
-  ),
+  MenuNode.link('Help & Support', Icons.help_outline_rounded, '/help'),
+  MenuNode.link('My Profile', Icons.account_circle_outlined, '/profile'),
 ];
 
 const _adminStudents = MenuNode.group('Students', Icons.groups_outlined, [
@@ -114,7 +135,13 @@ final Map<String, List<MenuNode>> roleMenus = {
     _adminStudents,
     _academics,
     _finance,
+    _results,
     const MenuNode.link('Reports', Icons.analytics_outlined, '/reports'),
+    const MenuNode.link(
+      'School Settings',
+      Icons.settings_outlined,
+      '/settings/school',
+    ),
     ..._commonNodes,
     const MenuNode.link(
       'Audit Log',
@@ -122,6 +149,23 @@ final Map<String, List<MenuNode>> roleMenus = {
       '/admin/audit-log',
       requiredPermission: 'auditlog:read',
     ),
+    const MenuNode.link(
+      'Email Delivery Log',
+      Icons.mark_email_read_outlined,
+      '/admin/email-log',
+    ),
+    const MenuNode.group('System', Icons.settings_applications_outlined, [
+      MenuNode.link(
+        'Roles & Workflow Map',
+        Icons.account_tree_outlined,
+        '/admin/roles-map',
+      ),
+      MenuNode.link(
+        'Supabase Setup',
+        Icons.storage_outlined,
+        '/admin/supabase-setup',
+      ),
+    ]),
   ],
   'ADMINISTRATOR': [
     _adminStudents,
@@ -136,11 +180,17 @@ final Map<String, List<MenuNode>> roleMenus = {
     _academics,
     _finance,
     const MenuNode.link('Reports', Icons.analytics_outlined, '/reports'),
+    const MenuNode.link(
+      'School Settings',
+      Icons.settings_outlined,
+      '/settings/school',
+    ),
     ..._commonNodes,
   ],
   'HEAD_TEACHER': [
     const MenuNode.link('Students', Icons.groups_outlined, '/students'),
     _academics,
+    _results,
     const MenuNode.group('Reviews', Icons.rate_review_outlined, [
       MenuNode.link(
         'Progression Reviews',
@@ -182,6 +232,11 @@ final Map<String, List<MenuNode>> roleMenus = {
       '/assessments',
     ),
     const MenuNode.link(
+      'Correction Requests',
+      Icons.rule_outlined,
+      '/results/corrections',
+    ),
+    const MenuNode.link(
       'Teacher Comments',
       Icons.comment_outlined,
       '/teacher/comments',
@@ -195,6 +250,16 @@ final Map<String, List<MenuNode>> roleMenus = {
       '/students',
     ),
     const MenuNode.link(
+      'Student Accounts',
+      Icons.manage_accounts_outlined,
+      '/finance/accounts',
+    ),
+    const MenuNode.link(
+      'Overdue Accounts',
+      Icons.warning_amber_rounded,
+      '/finance/overdue',
+    ),
+    const MenuNode.link(
       'Payments',
       Icons.payments_outlined,
       '/finance/payments',
@@ -204,10 +269,30 @@ final Map<String, List<MenuNode>> roleMenus = {
       Icons.receipt_long_outlined,
       '/finance/fees',
     ),
+    const MenuNode.link(
+      'Deposit Slips',
+      Icons.receipt_outlined,
+      '/finance/deposit-slips',
+    ),
+    const MenuNode.link(
+      'Payment Arrangements',
+      Icons.event_repeat_outlined,
+      '/finance/arrangements',
+    ),
+    const MenuNode.link(
+      'Payment Reversals',
+      Icons.undo_outlined,
+      '/finance/reversals',
+    ),
     const MenuNode.link('Reports', Icons.analytics_outlined, '/reports'),
     ..._commonNodes,
   ],
   'GUARDIAN': [
+    const MenuNode.link(
+      'My Children',
+      Icons.family_restroom_outlined,
+      '/guardian/child',
+    ),
     const MenuNode.link(
       'Progress',
       Icons.trending_up_outlined,

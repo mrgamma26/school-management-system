@@ -24,7 +24,6 @@ BEGIN
     END IF;
   END LOOP;
 END $$;
-
 DO $$
 DECLARE
   enrolled_label TEXT;

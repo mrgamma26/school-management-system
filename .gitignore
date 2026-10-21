@@ -71,6 +71,12 @@ supabase/functions/.env
 .serena/
 supabase/.temp/
 supabase/.branches/
+.docx_tools/
+
+# Local editor, Office lock files, and one-off test helpers
+.vscode/
+~$*
+*.tmp.ps1
 
 # Mobile Credentials
 android/app/key.properties

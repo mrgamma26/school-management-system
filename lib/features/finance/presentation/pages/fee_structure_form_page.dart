@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
-import '../../../../core/errors/app_exception.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../data/finance_repository.dart';
-import '../../domain/models/fee_structure.dart';
+
+import '../../../../core/errors/app_exception.dart';
+import '../../../../widgets/ui_kit.dart';
 import '../../../academics/data/academic_repository.dart';
 import '../../../academics/domain/models/academic_year.dart';
+import '../../data/finance_repository.dart';
+import '../../domain/models/fee_structure.dart';
+import '../../../../core/navigation/close_form.dart';
 
-/// Create or edit a fee structure entry.
+/// Screen 38 - Create or edit a fee structure entry.
 class FeeStructureFormPage extends ConsumerStatefulWidget {
   final String academicYearId;
   final FeeStructure? existing;
@@ -107,7 +110,7 @@ class _FeeStructureFormPageState extends ConsumerState<FeeStructureFormPage> {
           ),
         );
       }
-      if (mounted) Navigator.pop(context, true);
+      if (mounted) closeForm(context, '/finance/fees', true);
     } catch (e) {
       setState(() => _error = friendlyError(e));
     } finally {
@@ -117,29 +120,38 @@ class _FeeStructureFormPageState extends ConsumerState<FeeStructureFormPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(_isEdit ? 'Edit Fee' : 'Add Fee Structure')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            children: [
-              if (_academicYears.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
+    return FormPageLayout(
+      kicker: 'Finance',
+      title: _isEdit ? 'Edit Fee' : 'Create Fee Structure',
+      subtitle: 'Define fee items and amounts with a clear academic period.',
+      formTitle: 'Fee details',
+      saving: _loading,
+      saveLabel: _isEdit ? 'Save Changes' : 'Create Fee',
+      onSave: _submit,
+      error: _error,
+      guideTitle: 'Reminder:',
+      guide:
+          'Amounts must be positive. Existing payments keep the amount they were recorded against.',
+      side: const [
+        CheckRow(label: 'Amount is a positive value in MWK', checked: true),
+        CheckRow(label: 'One fee item per academic period', checked: true),
+        CheckRow(label: 'Changes are audited', checked: true),
+      ],
+      form: Form(
+        key: _formKey,
+        child: FieldGrid(
+          children: [
+            if (_academicYears.isNotEmpty)
+              FullWidth(
+                child: UiField(
+                  label: 'Academic year, term and form',
                   child: DropdownButtonFormField<String>(
                     initialValue: _selectedAcademicYearId,
-                    decoration: const InputDecoration(
-                      labelText: 'Academic Year and Term',
-                    ),
                     items: _academicYears
                         .map(
                           (year) => DropdownMenuItem(
                             value: year.id,
-                            child: Text(
-                              '${formatAcademicYear(year.year)} · ${year.term}',
-                            ),
+                            child: Text(year.selectionLabel),
                           ),
                         )
                         .toList(),
@@ -150,59 +162,38 @@ class _FeeStructureFormPageState extends ConsumerState<FeeStructureFormPage> {
                         : null,
                   ),
                 ),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: TextFormField(
-                  controller: _feeTypeCtrl,
-                  decoration: const InputDecoration(labelText: 'Fee Type'),
-                  validator: (v) => (v == null || v.trim().isEmpty)
-                      ? 'Fee type is required.'
-                      : null,
-                ),
               ),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: TextFormField(
-                  controller: _amountCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: const InputDecoration(labelText: 'Amount (MWK)'),
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) {
-                      return 'Amount is required.';
-                    }
-                    final n = double.tryParse(v.trim());
-                    if (n == null || n < 0) {
-                      return 'Enter a valid positive amount.';
-                    }
-                    return null;
-                  },
-                ),
+            UiField(
+              label: 'Fee type',
+              child: TextFormField(
+                controller: _feeTypeCtrl,
+                decoration: const InputDecoration(hintText: 'e.g. Tuition'),
+                validator: (v) => (v == null || v.trim().isEmpty)
+                    ? 'Fee type is required.'
+                    : null,
               ),
-              if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(
-                    _error!,
-                    style: const TextStyle(color: Colors.red),
-                  ),
+            ),
+            UiField(
+              label: 'Amount (MWK)',
+              child: TextFormField(
+                controller: _amountCtrl,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
                 ),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _loading ? null : _submit,
-                  child: _loading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(_isEdit ? 'Save Changes' : 'Create Fee'),
-                ),
+                decoration: const InputDecoration(hintText: '0.00'),
+                validator: (v) {
+                  if (v == null || v.trim().isEmpty) {
+                    return 'Amount is required.';
+                  }
+                  final n = double.tryParse(v.trim());
+                  if (n == null || n < 0) {
+                    return 'Enter a valid positive amount.';
+                  }
+                  return null;
+                },
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

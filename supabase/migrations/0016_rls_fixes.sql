@@ -24,7 +24,6 @@ AS $$
     AND  su.isactive = true
   LIMIT 1;
 $$;
-
 -- ─────────────────────────────────────────────────────────────────────────────
 -- systemuser
 -- ADMINISTRATOR needs to list users for the user management page.
@@ -37,7 +36,6 @@ USING (
     'SUPER_USER', 'SYSTEM_ADMIN', 'ADMINISTRATOR', 'REGISTRAR', 'HEAD_TEACHER'
   )
 );
-
 -- ─────────────────────────────────────────────────────────────────────────────
 -- staff
 -- ADMINISTRATOR needs staff list; ACCOUNTANT needs staff for payment lookups.
@@ -51,7 +49,6 @@ USING (
     'HEAD_TEACHER', 'ACCOUNTANT', 'TEACHER'
   )
 );
-
 -- Staff can also manage their own record (update profile fields)
 DROP POLICY IF EXISTS "admins and registrars can manage staff" ON public.staff;
 CREATE POLICY "admins manage staff"
@@ -59,7 +56,6 @@ ON public.staff FOR ALL TO authenticated
 USING (
   public.current_app_role() IN ('SUPER_USER', 'SYSTEM_ADMIN', 'ADMINISTRATOR', 'REGISTRAR')
 );
-
 -- ─────────────────────────────────────────────────────────────────────────────
 -- guardian
 -- ADMINISTRATOR and HEAD_TEACHER need guardian list for communications.
@@ -73,14 +69,12 @@ USING (
     'HEAD_TEACHER', 'TEACHER', 'ACCOUNTANT'
   )
 );
-
 DROP POLICY IF EXISTS "admins and registrars can manage guardians" ON public.guardian;
 CREATE POLICY "admins manage guardians"
 ON public.guardian FOR ALL TO authenticated
 USING (
   public.current_app_role() IN ('SUPER_USER', 'SYSTEM_ADMIN', 'ADMINISTRATOR', 'REGISTRAR')
 );
-
 -- ─────────────────────────────────────────────────────────────────────────────
 -- student
 -- ACCOUNTANT needs students list for finance pages.
@@ -94,14 +88,12 @@ USING (
     'TEACHER', 'HEAD_TEACHER', 'ACCOUNTANT'
   )
 );
-
 DROP POLICY IF EXISTS "registrars can manage students" ON public.student;
 CREATE POLICY "admins manage students"
 ON public.student FOR ALL TO authenticated
 USING (
   public.current_app_role() IN ('SUPER_USER', 'SYSTEM_ADMIN', 'ADMINISTRATOR', 'REGISTRAR')
 );
-
 -- ─────────────────────────────────────────────────────────────────────────────
 -- studentguardian
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -111,7 +103,6 @@ ON public.studentguardian FOR ALL TO authenticated
 USING (
   public.current_app_role() IN ('SUPER_USER', 'SYSTEM_ADMIN', 'ADMINISTRATOR', 'REGISTRAR')
 );
-
 -- All staff can read links (needed for teacher pages)
 DROP POLICY IF EXISTS "staff can read guardian links" ON public.studentguardian;
 CREATE POLICY "staff read guardian links"
@@ -122,7 +113,6 @@ USING (
     'TEACHER', 'HEAD_TEACHER', 'ACCOUNTANT'
   )
 );
-
 -- ─────────────────────────────────────────────────────────────────────────────
 -- studentclasshistory
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -141,7 +131,6 @@ USING (
     'TEACHER', 'HEAD_TEACHER', 'ACCOUNTANT'
   )
 );
-
 -- ─────────────────────────────────────────────────────────────────────────────
 -- classsubject (teaching assignments)
 -- ADMINISTRATOR and ACCOUNTANT need to read assignments.
@@ -150,7 +139,6 @@ DROP POLICY IF EXISTS "all staff read class assignments"           ON public.cla
 DROP POLICY IF EXISTS "admin manages class assignments"            ON public.classsubject;
 DROP POLICY IF EXISTS "privileged roles can read all assignments"  ON public.classsubject;
 DROP POLICY IF EXISTS "admins and registrars can manage assignments" ON public.classsubject;
-
 CREATE POLICY "authenticated staff read class assignments"
 ON public.classsubject FOR SELECT TO authenticated
 USING (
@@ -164,13 +152,11 @@ USING (
       AND s.userid  = auth.uid()
   )
 );
-
 CREATE POLICY "admins manage class assignments"
 ON public.classsubject FOR ALL TO authenticated
 USING (
   public.current_app_role() IN ('SUPER_USER', 'SYSTEM_ADMIN', 'ADMINISTRATOR', 'REGISTRAR')
 );
-
 -- ─────────────────────────────────────────────────────────────────────────────
 -- academicyear — ensure ADMINISTRATOR can manage years
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -182,7 +168,6 @@ USING (
     'SUPER_USER', 'SYSTEM_ADMIN', 'ADMINISTRATOR', 'REGISTRAR', 'HEAD_TEACHER'
   )
 );
-
 -- ─────────────────────────────────────────────────────────────────────────────
 -- class — ensure ADMINISTRATOR can manage
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -192,7 +177,6 @@ ON public.class FOR ALL TO authenticated
 USING (
   public.current_app_role() IN ('SUPER_USER', 'SYSTEM_ADMIN', 'ADMINISTRATOR', 'REGISTRAR')
 );
-
 -- ─────────────────────────────────────────────────────────────────────────────
 -- subject
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -204,7 +188,6 @@ USING (
     'SUPER_USER', 'SYSTEM_ADMIN', 'ADMINISTRATOR', 'REGISTRAR', 'HEAD_TEACHER'
   )
 );
-
 -- ─────────────────────────────────────────────────────────────────────────────
 -- auditlog
 -- Fix: SUPER_USER was missing from the SELECT policy.
@@ -216,14 +199,12 @@ ON public.auditlog FOR SELECT TO authenticated
 USING (
   public.current_app_role() IN ('SUPER_USER', 'SYSTEM_ADMIN')
 );
-
 -- Ensure INSERT is still open to all authenticated (audit service runs as user)
 DROP POLICY IF EXISTS "authenticated users can insert audit records" ON public.auditlog;
 DROP POLICY IF EXISTS "any authenticated user can insert audit log"  ON public.auditlog;
 CREATE POLICY "authenticated users insert audit log"
 ON public.auditlog FOR INSERT TO authenticated
 WITH CHECK (true);
-
 -- ─────────────────────────────────────────────────────────────────────────────
 -- role & rolepermission — ADMINISTRATOR can read but not modify
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -231,18 +212,15 @@ DROP POLICY IF EXISTS "admins can manage roles"            ON public.role;
 CREATE POLICY "super user manages roles"
 ON public.role FOR ALL TO authenticated
 USING (public.current_app_role() IN ('SUPER_USER', 'SYSTEM_ADMIN'));
-
 DROP POLICY IF EXISTS "admins can manage role permissions" ON public.rolepermission;
 CREATE POLICY "super user manages role permissions"
 ON public.rolepermission FOR ALL TO authenticated
 USING (public.current_app_role() IN ('SUPER_USER', 'SYSTEM_ADMIN'));
-
 -- Allow all authenticated staff to read rolepermission (for permission checks)
 DROP POLICY IF EXISTS "staff read role permissions" ON public.rolepermission;
 CREATE POLICY "authenticated read role permissions"
 ON public.rolepermission FOR SELECT TO authenticated
 USING (true);
-
 -- ─────────────────────────────────────────────────────────────────────────────
 -- assessment — fix duplicate policies from 0014 vs 0006
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -250,7 +228,6 @@ DROP POLICY IF EXISTS "teacher manages own assessments"       ON public.assessme
 DROP POLICY IF EXISTS "privileged roles read all assessments" ON public.assessment;
 DROP POLICY IF EXISTS "teachers can manage own assessments"   ON public.assessment;
 DROP POLICY IF EXISTS "privileged roles can read all assessments" ON public.assessment;
-
 CREATE POLICY "teachers manage own assessments"
 ON public.assessment FOR ALL TO authenticated
 USING (
@@ -261,7 +238,6 @@ USING (
       AND  s.userid = auth.uid()
   )
 );
-
 CREATE POLICY "privileged roles read assessments"
 ON public.assessment FOR SELECT TO authenticated
 USING (
@@ -269,7 +245,6 @@ USING (
     'SUPER_USER', 'SYSTEM_ADMIN', 'ADMINISTRATOR', 'REGISTRAR', 'HEAD_TEACHER'
   )
 );
-
 -- ─────────────────────────────────────────────────────────────────────────────
 -- grade — fix duplicate policies from 0014 vs 0006
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -279,7 +254,6 @@ DROP POLICY IF EXISTS "guardians read grades for linked students"      ON public
 DROP POLICY IF EXISTS "teachers can manage grades for own assessments" ON public.grade;
 DROP POLICY IF EXISTS "privileged roles can read all grades"           ON public.grade;
 DROP POLICY IF EXISTS "guardians see grades for linked students"       ON public.grade;
-
 CREATE POLICY "teachers manage grades"
 ON public.grade FOR ALL TO authenticated
 USING (
@@ -291,7 +265,6 @@ USING (
       AND  s.userid = auth.uid()
   )
 );
-
 CREATE POLICY "privileged roles read grades"
 ON public.grade FOR SELECT TO authenticated
 USING (
@@ -299,7 +272,6 @@ USING (
     'SUPER_USER', 'SYSTEM_ADMIN', 'ADMINISTRATOR', 'HEAD_TEACHER'
   )
 );
-
 CREATE POLICY "guardians read grades for their students"
 ON public.grade FOR SELECT TO authenticated
 USING (
@@ -310,14 +282,12 @@ USING (
       AND  sg.studentid = grade.studentid
   )
 );
-
 -- ─────────────────────────────────────────────────────────────────────────────
 -- progressionreview — fix duplicate policies
 -- ─────────────────────────────────────────────────────────────────────────────
 DROP POLICY IF EXISTS "head teacher manages progression reviews"     ON public.progressionreview;
 DROP POLICY IF EXISTS "head teacher can manage progression reviews"  ON public.progressionreview;
 DROP POLICY IF EXISTS "registrars can read progression reviews"      ON public.progressionreview;
-
 CREATE POLICY "head teacher manages progression reviews"
 ON public.progressionreview FOR ALL TO authenticated
 USING (
@@ -325,14 +295,12 @@ USING (
     'SUPER_USER', 'SYSTEM_ADMIN', 'ADMINISTRATOR', 'REGISTRAR', 'HEAD_TEACHER'
   )
 );
-
 -- ─────────────────────────────────────────────────────────────────────────────
 -- weedingreview — fix duplicate policies
 -- ─────────────────────────────────────────────────────────────────────────────
 DROP POLICY IF EXISTS "head teacher manages weeding reviews"     ON public.weedingreview;
 DROP POLICY IF EXISTS "head teacher can manage weeding reviews"  ON public.weedingreview;
 DROP POLICY IF EXISTS "registrars can read weeding reviews"      ON public.weedingreview;
-
 CREATE POLICY "head teacher manages weeding reviews"
 ON public.weedingreview FOR ALL TO authenticated
 USING (
@@ -340,11 +308,10 @@ USING (
     'SUPER_USER', 'SYSTEM_ADMIN', 'ADMINISTRATOR', 'REGISTRAR', 'HEAD_TEACHER'
   )
 );
-
 -- ─────────────────────────────────────────────────────────────────────────────
 -- VERIFICATION QUERY (run separately to confirm policies applied)
 -- ─────────────────────────────────────────────────────────────────────────────
 -- SELECT schemaname, tablename, policyname, cmd, roles
 -- FROM pg_policies
 -- WHERE schemaname = 'public'
--- ORDER BY tablename, policyname;
+-- ORDER BY tablename, policyname;;

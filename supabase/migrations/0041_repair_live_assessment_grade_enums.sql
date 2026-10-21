@@ -56,5 +56,4 @@ BEGIN
   END LOOP;
 END
 $$;
-
 NOTIFY pgrst, 'reload schema';

@@ -6,15 +6,12 @@
 -- without enum transaction-order problems.
 ALTER TABLE public.payment
   ALTER COLUMN method TYPE text USING method::text;
-
 ALTER TABLE public.payment
   DROP CONSTRAINT IF EXISTS payment_method_check;
-
 ALTER TABLE public.payment
   ADD CONSTRAINT payment_method_check CHECK (
     method IN ('CASH', 'BANK_TRANSFER', 'MOBILE_MONEY', 'CARD', 'CHEQUE', 'OTHER')
   );
-
 CREATE TABLE IF NOT EXISTS public.paymentchannel (
   channelid        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   channeltype      text NOT NULL CHECK (
@@ -35,16 +32,13 @@ CREATE TABLE IF NOT EXISTS public.paymentchannel (
     OR providername IN ('Airtel Money', 'TNM Mpamba')
   )
 );
-
 ALTER TABLE public.payment
   ADD COLUMN IF NOT EXISTS channelid uuid
     REFERENCES public.paymentchannel(channelid) ON DELETE RESTRICT,
   ADD COLUMN IF NOT EXISTS transactiondetails jsonb NOT NULL DEFAULT '{}'::jsonb,
   ADD COLUMN IF NOT EXISTS processingfee numeric(12,2) NOT NULL DEFAULT 0
     CHECK (processingfee >= 0);
-
 CREATE SEQUENCE IF NOT EXISTS public.payment_receipt_number_seq;
-
 CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_method_channel_reference
   ON public.payment (
     method,
@@ -52,16 +46,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_method_channel_reference
     lower(trim(referencenumber))
   )
   WHERE referencenumber IS NOT NULL AND trim(referencenumber) <> '';
-
 ALTER TABLE public.paymentchannel ENABLE ROW LEVEL SECURITY;
-
 GRANT SELECT, INSERT, UPDATE ON public.paymentchannel TO authenticated;
-
 DROP POLICY IF EXISTS paymentchannel_read_authenticated ON public.paymentchannel;
 CREATE POLICY paymentchannel_read_authenticated
   ON public.paymentchannel FOR SELECT TO authenticated
   USING (true);
-
 DROP POLICY IF EXISTS paymentchannel_manage_admin ON public.paymentchannel;
 CREATE POLICY paymentchannel_manage_admin
   ON public.paymentchannel FOR ALL TO authenticated
@@ -85,7 +75,6 @@ CREATE POLICY paymentchannel_manage_admin
         AND upper(r.rolename) IN ('ADMINISTRATOR', 'SUPER_USER', 'SYSTEM_ADMIN')
     )
   );
-
 CREATE OR REPLACE FUNCTION public.record_payment_v2(
   p_student_id uuid,
   p_fee_structure_id uuid,
@@ -230,10 +219,8 @@ EXCEPTION
     RAISE EXCEPTION 'This transaction reference or receipt has already been recorded.';
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.record_payment_v2(uuid, uuid, numeric, date, text, uuid, text, numeric, jsonb) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.record_payment_v2(uuid, uuid, numeric, date, text, uuid, text, numeric, jsonb) TO authenticated;
-
 CREATE OR REPLACE FUNCTION public.audit_payment_channel_change()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -260,10 +247,8 @@ BEGIN
   RETURN NEW;
 END;
 $$;
-
 DROP TRIGGER IF EXISTS trg_audit_payment_channel_change ON public.paymentchannel;
 CREATE TRIGGER trg_audit_payment_channel_change
 AFTER INSERT OR UPDATE ON public.paymentchannel
 FOR EACH ROW EXECUTE FUNCTION public.audit_payment_channel_change();
-
 NOTIFY pgrst, 'reload schema';

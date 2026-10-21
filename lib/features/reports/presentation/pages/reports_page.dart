@@ -4,6 +4,9 @@ import '../../../../core/errors/app_exception.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/database/supabase_client.dart';
 import '../../../../core/services/export_service.dart';
+import '../../../../theme/app_tokens.dart';
+import '../../../../widgets/ui_kit.dart';
+import '../report_providers.dart';
 
 // ── Providers ─────────────────────────────────────────────────────────────────
 
@@ -133,50 +136,6 @@ final _financialReportProvider =
 
 // ── Enrolment summary ─────────────────────────────────────────────────────────
 
-final _enrolmentReportProvider =
-    FutureProvider.family<Map<String, dynamic>, String>((ref, yearId) async {
-      // Students per class for the given year
-      final rows = await supabase
-          .from('studentclasshistory')
-          .select('classid, class(classroomname)')
-          .eq('academicyearid', yearId)
-          .isFilter('enddate', null);
-
-      final byClass = <String, int>{};
-      for (final r in rows as List) {
-        final cls = r['class'] as Map<String, dynamic>?;
-        final name = cls?['classroomname'] as String? ?? 'Unknown';
-        byClass[name] =
-            (byClass[name] ?? 0) + 1; // ← was missing: never populated
-      }
-
-      // Total enrolled students
-      final total = await supabase
-          .from('student')
-          .select('studentid')
-          .eq('enrollmentstatus', 'enrolled');
-
-      // Gender split
-      final male = await supabase
-          .from('student')
-          .select('studentid')
-          .eq('enrollmentstatus', 'enrolled')
-          .eq('gender', 'MALE');
-      final female = await supabase
-          .from('student')
-          .select('studentid')
-          .eq('enrollmentstatus', 'enrolled')
-          .eq('gender', 'FEMALE');
-
-      return {
-        'total_enrolled': (total as List).length,
-        'male_count': (male as List).length,
-        'female_count': (female as List).length,
-        'by_class': byClass,
-        'active_in_year': (rows as List).length,
-      };
-    });
-
 // ── Performance summary ───────────────────────────────────────────────────────
 
 final _performanceReportProvider =
@@ -246,106 +205,103 @@ class ReportsPage extends ConsumerStatefulWidget {
   ConsumerState<ReportsPage> createState() => _ReportsPageState();
 }
 
-class _ReportsPageState extends ConsumerState<ReportsPage>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabs;
+class _ReportsPageState extends ConsumerState<ReportsPage> {
+  int _tab = 0;
   String? _yearId;
   String? _yearLabel;
 
   @override
-  void initState() {
-    super.initState();
-    _tabs = TabController(length: 4, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tabs.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     final yearsAsync = ref.watch(_reportYearsProvider);
+    final phone = MediaQuery.sizeOf(context).width < Breakpoints.mobile;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Reports'),
-        actions: const [],
-        bottom: TabBar(
-          controller: _tabs,
-          tabs: const [
-            Tab(icon: Icon(Icons.payments), text: 'Finance'),
-            Tab(icon: Icon(Icons.calendar_view_day), text: 'Breakdown'),
-            Tab(icon: Icon(Icons.school), text: 'Enrolment'),
-            Tab(icon: Icon(Icons.trending_up), text: 'Performance'),
-          ],
+    return Material(
+      type: MaterialType.transparency,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          phone ? 16 : 24,
+          phone ? 16 : 24,
+          phone ? 16 : 24,
+          0,
         ),
-      ),
-      body: Column(
-        children: [
-          // ── Year selector ────────────────────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: yearsAsync.when(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const PageHead(
+              kicker: 'Reports',
+              title: 'Reports',
+              subtitle:
+                  'Collection, enrolment and performance summaries for an academic year.',
+            ),
+            // ── Year selector ──────────────────────────────────────────────
+            yearsAsync.when(
               loading: () => const LinearProgressIndicator(),
-              error: (e, _) => Text('Error loading years: $e'),
-              data: (years) => DropdownButtonFormField<String>(
-                initialValue: _yearId,
-                decoration: const InputDecoration(
-                  labelText: 'Academic Year',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.calendar_today),
+              error: (e, _) => UiNotice('Error loading years: $e'),
+              data: (years) => UiCard(
+                padding: const EdgeInsets.all(12),
+                child: UiField(
+                  label: 'Academic year',
+                  child: DropdownButtonFormField<String>(
+                    initialValue: _yearId,
+                    hint: const Text('Select academic year'),
+                    items: years.map((y) {
+                      final id = y['academicyearid'] as String;
+                      final lbl = formatAcademicYear(y['academicyear']);
+                      return DropdownMenuItem(value: id, child: Text(lbl));
+                    }).toList(),
+                    onChanged: (v) {
+                      final y = years.firstWhere(
+                        (y) => y['academicyearid'] == v,
+                      );
+                      setState(() {
+                        _yearId = v;
+                        _yearLabel = formatAcademicYear(y['academicyear']);
+                      });
+                    },
+                  ),
                 ),
-                hint: const Text('Select academic year'),
-                items: years.map((y) {
-                  final id = y['academicyearid'] as String;
-                  final lbl = formatAcademicYear(y['academicyear']);
-                  return DropdownMenuItem(value: id, child: Text(lbl));
-                }).toList(),
-                onChanged: (v) {
-                  final y = years.firstWhere((y) => y['academicyearid'] == v);
-                  setState(() {
-                    _yearId = v;
-                    _yearLabel = formatAcademicYear(y['academicyear']);
-                  });
-                },
               ),
             ),
-          ),
+            TabsBar(
+              tabs: const ['Finance', 'Breakdown', 'Enrolment', 'Performance'],
+              index: _tab,
+              onChanged: (i) => setState(() => _tab = i),
+            ),
 
-          // ── Tab views ────────────────────────────────────────────────────
-          Expanded(
-            child: _yearId == null
-                ? const Center(
-                    child: Text(
-                      'Select an academic year to generate reports',
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  )
-                : TabBarView(
-                    controller: _tabs,
-                    children: [
-                      _FinancialReport(
+            // ── Tab views ──────────────────────────────────────────────────
+            Expanded(
+              child: _yearId == null
+                  ? const SingleChildScrollView(
+                      child: UiCard(
+                        child: UiEmptyState(
+                          icon: Icons.analytics_outlined,
+                          title: 'Select an academic year',
+                          message:
+                              'Select an academic year to generate reports.',
+                        ),
+                      ),
+                    )
+                  : switch (_tab) {
+                      0 => _FinancialReport(
                         yearId: _yearId!,
                         yearLabel: _yearLabel!,
                       ),
-                      _FinancialBreakdown(
+                      1 => _FinancialBreakdown(
                         yearId: _yearId!,
                         yearLabel: _yearLabel!,
                       ),
-                      _EnrolmentReport(
+                      2 => _EnrolmentReport(
                         yearId: _yearId!,
                         yearLabel: _yearLabel!,
                       ),
-                      _PerformanceReport(
+                      _ => _PerformanceReport(
                         yearId: _yearId!,
                         yearLabel: _yearLabel!,
                       ),
-                    ],
-                  ),
-          ),
-        ],
+                    },
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -419,7 +375,7 @@ class _FinancialReport extends ConsumerWidget {
             'Number of Payments',
             '${data['payment_count']}',
             Icons.receipt_long,
-            Colors.purple,
+            AppColors.primary,
           ),
           const SizedBox(height: 8),
           _StatCard(
@@ -565,7 +521,7 @@ class _DailyBreakdownList extends StatelessWidget {
           'Average per Day',
           'MWK ${(total / data.length).toStringAsFixed(2)}',
           Icons.show_chart,
-          Colors.purple,
+          AppColors.primary,
         ),
         const SizedBox(height: 16),
         const Text(
@@ -770,12 +726,25 @@ class _EnrolmentReport extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(_enrolmentReportProvider(yearId));
+    final async = ref.watch(enrolmentReportProvider(yearId));
     return async.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text(friendlyError(e))),
+      error: (e, _) => Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(friendlyError(e), textAlign: TextAlign.center),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () => ref.invalidate(enrolmentReportProvider(yearId)),
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+            ),
+          ],
+        ),
+      ),
       data: (data) {
-        final byClass = data['by_class'] as Map<String, int>;
+        final byClass = data.byClass;
         return ListView(
           padding: const EdgeInsets.all(16),
           children: [
@@ -783,7 +752,7 @@ class _EnrolmentReport extends ConsumerWidget {
               'Enrolment Summary',
               yearLabel,
               Icons.school,
-              Colors.indigo,
+              AppColors.primary,
             ),
             const SizedBox(height: 8),
             // Export button
@@ -791,45 +760,45 @@ class _EnrolmentReport extends ConsumerWidget {
               onPressed: () async {
                 await ExportService.exportEnrolmentReportPdf(
                   yearLabel: yearLabel,
-                  totalEnrolled: data['total_enrolled'] as int,
-                  maleCount: data['male_count'] as int,
-                  femaleCount: data['female_count'] as int,
-                  activeInYear: data['active_in_year'] as int,
+                  totalEnrolled: data.totalEnrolled,
+                  maleCount: data.maleCount,
+                  femaleCount: data.femaleCount,
+                  activeInYear: data.activeInYear,
                   byClass: byClass,
                 );
               },
               icon: const Icon(Icons.picture_as_pdf),
               label: const Text('Export to PDF'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.indigo,
+                backgroundColor: AppColors.primary,
                 foregroundColor: Colors.white,
               ),
             ),
             const SizedBox(height: 16),
             _StatCard(
               'Total Enrolled',
-              '${data['total_enrolled']}',
+              '${data.totalEnrolled}',
               Icons.groups,
-              Colors.indigo,
+              AppColors.primary,
             ),
             const SizedBox(height: 8),
             _StatCard(
               'Male Students',
-              '${data['male_count']}',
+              '${data.maleCount}',
               Icons.male,
               Colors.blue,
             ),
             const SizedBox(height: 8),
             _StatCard(
               'Female Students',
-              '${data['female_count']}',
+              '${data.femaleCount}',
               Icons.female,
               Colors.pink,
             ),
             const SizedBox(height: 8),
             _StatCard(
               'Active in Selected Year',
-              '${data['active_in_year']}',
+              '${data.activeInYear}',
               Icons.calendar_today,
               Colors.teal,
             ),
@@ -845,14 +814,14 @@ class _EnrolmentReport extends ConsumerWidget {
                 child: ListTile(
                   dense: true,
                   leading: const CircleAvatar(
-                    backgroundColor: Colors.indigo,
+                    backgroundColor: AppColors.primary,
                     radius: 16,
                     child: Icon(Icons.class_, color: Colors.white, size: 14),
                   ),
                   title: Text(e.key),
                   trailing: Chip(
                     label: Text('${e.value}'),
-                    backgroundColor: Colors.indigo.withValues(alpha: 0.1),
+                    backgroundColor: AppColors.primary.withValues(alpha: 0.1),
                   ),
                 ),
               ),
@@ -1054,34 +1023,47 @@ class _ReportHeader extends StatelessWidget {
 
   const _ReportHeader(this.title, this.subtitle, this.icon, this.color);
 
+  // [color] is kept for the existing call sites; the redesign uses the shared
+  // school blue so green / amber / red stay reserved for status.
   @override
-  Widget build(BuildContext context) => Card(
-    color: color.withValues(alpha: 0.08),
-    child: Padding(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          CircleAvatar(
-            backgroundColor: color,
-            child: Icon(icon, color: Colors.white),
+  Widget build(BuildContext context) => UiCard(
+    color: AppColors.primarySurface,
+    child: Row(
+      children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: AppColors.primary,
+            borderRadius: BorderRadius.circular(11),
           ),
-          const SizedBox(width: 12),
-          Column(
+          child: Icon(icon, color: Colors.white, size: 21),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 title,
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                  color: color,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 15,
+                  color: AppColors.primaryDark,
                 ),
               ),
-              Text(subtitle, style: const TextStyle(fontSize: 12)),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
+                ),
+              ),
             ],
           ),
-        ],
-      ),
+        ),
+      ],
     ),
   );
 }
@@ -1094,22 +1076,41 @@ class _StatCard extends StatelessWidget {
 
   const _StatCard(this.label, this.value, this.icon, this.color);
 
+  // [color] is kept for the existing call sites; see _ReportHeader.
   @override
-  Widget build(BuildContext context) => Card(
-    child: ListTile(
-      leading: CircleAvatar(
-        backgroundColor: color.withValues(alpha: 0.15),
-        child: Icon(icon, color: color, size: 22),
-      ),
-      title: Text(label, style: const TextStyle(fontSize: 13)),
-      trailing: Text(
-        value,
-        style: TextStyle(
-          fontWeight: FontWeight.bold,
-          fontSize: 16,
-          color: color,
+  Widget build(BuildContext context) => UiCard(
+    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+    child: Row(
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: AppColors.primarySurface,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: AppColors.blue800, size: 19),
         ),
-      ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ),
+        Text(
+          value,
+          style: const TextStyle(
+            fontWeight: FontWeight.w900,
+            fontSize: 16,
+            color: AppColors.textPrimary,
+          ),
+        ),
+      ],
     ),
   );
 }

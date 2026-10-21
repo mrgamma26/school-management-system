@@ -1,89 +1,131 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-import '../../../core/widgets/app_widgets.dart';
+
 import '../../../widgets/app_shell.dart';
-import '../../authentication/presentation/providers/auth_provider.dart';
+import 'dashboard_charts.dart';
 import 'dashboard_scaffold.dart';
 
+/// Screen 5 - Teacher dashboard.
 class TeacherDashboard extends ConsumerWidget {
   const TeacherDashboard({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    ref.watch(authProvider);
     return AppShell(
       homeRoute: '/teacher/home',
-      body: DashboardBody(
-        subtitle:
-            'Manage your classes, assessments, grades and student comments',
-        roleIcon: Icons.school,
-        roleColor: AppColors.roleTeacher,
-        children: [
-          DashGrid(
-            sectionTitle: 'Classes You Teach',
-            sectionIcon: Icons.class_,
-            tiles: [
-              _T(
-                'Classes You Teach',
-                Icons.assignment_ind,
-                AppColors.roleTeacher,
-                () => context.go('/academics/assignments'),
-              ),
-              _T(
-                'My Students',
-                Icons.groups,
-                AppColors.roleAdmin,
-                () => context.go('/students'),
-              ),
-            ],
+      body: RoleDashboard(
+        kicker: '',
+        title: 'Teacher Dashboard',
+        subtitle: '',
+        charts: teacherCharts(),
+        quickStart: const [
+          DashboardLink(
+            'Enter Marks',
+            Icons.edit_note_outlined,
+            '/assessments',
+            detail: 'Record and submit class marks',
           ),
-          DashGrid(
-            sectionTitle: 'Assessments & Grades',
-            sectionIcon: Icons.grade,
-            tiles: [
-              _T(
-                'Add Assessment',
-                Icons.add_task,
-                AppColors.roleTeacher,
-                () => context.go('/assessments'),
-              ),
-              _T(
-                'Assessments & Grades',
-                Icons.quiz,
-                AppColors.primary,
-                () => context.go('/assessments'),
-              ),
-            ],
+          DashboardLink(
+            'Student Comments',
+            Icons.comment_outlined,
+            '/teacher/comments',
+            detail: 'Write term feedback for learners',
           ),
-          DashGrid(
-            sectionTitle: 'Communications',
-            sectionIcon: Icons.campaign,
-            tiles: [
-              _T(
-                'Teacher Comments',
-                Icons.comment,
-                AppColors.roleTeacher,
-                () => context.go('/teacher/comments'),
-              ),
-              _T(
-                'Notifications',
-                Icons.notifications,
-                AppColors.roleHeadTeacher,
-                () => context.go('/notifications'),
-              ),
-              _T(
-                'Calendar',
-                Icons.calendar_month,
-                AppColors.roleAccountant,
-                () => context.go('/calendar'),
-              ),
-            ],
+          DashboardLink(
+            'My Classes',
+            Icons.assignment_ind_outlined,
+            '/academics/assignments',
+            detail: 'Your class-subject assignments',
           ),
+        ],
+        queueRole: 'TEACHER',
+        metrics: [
+          DashboardMetric.table(
+            icon: Icons.class_outlined,
+            label: 'Class-subject assignments',
+            table: 'teacher_assignments',
+            note: 'Assigned to you',
+            route: '/academics/assignments',
+          ),
+          DashboardMetric.table(
+            icon: Icons.quiz_outlined,
+            label: 'Assessments',
+            table: 'assessment',
+            note: 'You can see',
+            route: '/assessments',
+          ),
+          DashboardMetric.table(
+            icon: Icons.groups_outlined,
+            label: 'Students',
+            table: 'student',
+            note: 'In your classes',
+            route: '/students',
+          ),
+          DashboardMetric.table(
+            icon: Icons.comment_outlined,
+            label: 'Comments written',
+            table: 'teachercomment',
+            note: 'Term feedback',
+            route: '/teacher/comments',
+          ),
+        ],
+        queueTitle: 'Teaching workboard',
+        queueNote: 'Your fastest paths',
+        queue: const [
+          DashboardLink(
+            'Assigned classes',
+            Icons.class_outlined,
+            '/academics/assignments',
+            detail: 'Open your current class-subject assignments',
+          ),
+          DashboardLink(
+            'Assessment work',
+            Icons.edit_note_outlined,
+            '/assessments',
+            detail: 'Create assessments and enter marks',
+          ),
+          DashboardLink(
+            'Learner comments',
+            Icons.comment_outlined,
+            '/teacher/comments',
+            detail: 'Record concise term feedback',
+          ),
+        ],
+        groups: const [
+          DashboardGroup('Classes you teach', [
+            DashboardLink(
+              'Classes You Teach',
+              Icons.assignment_ind_outlined,
+              '/academics/assignments',
+            ),
+            DashboardLink('My Students', Icons.groups_outlined, '/students'),
+          ]),
+          DashboardGroup('Assessments & grades', [
+            DashboardLink(
+              'Add Assessment',
+              Icons.add_task_outlined,
+              '/assessments',
+            ),
+            DashboardLink(
+              'Assessments & Grades',
+              Icons.quiz_outlined,
+              '/assessments',
+            ),
+          ]),
+          DashboardGroup('Communications', [
+            DashboardLink(
+              'Teacher Comments',
+              Icons.comment_outlined,
+              '/teacher/comments',
+            ),
+            DashboardLink(
+              'Calendar',
+              Icons.calendar_month_outlined,
+              '/calendar',
+            ),
+          ]),
         ],
       ),
     );
   }
 }
-
-typedef _T = TileData;

@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
-import '../../../../core/errors/app_exception.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../widgets/can.dart';
 import '../../data/progression_repository.dart';
 import '../../../../core/database/supabase_client.dart';
 import '../../../academics/domain/models/academic_year.dart';
 import '../../../authentication/presentation/providers/auth_provider.dart';
+import '../../../../core/widgets/app_widgets.dart'
+    show ErrorState, LoadingState;
+import '../../../../widgets/ui_kit.dart';
+import '../../../../core/errors/rpc_error.dart';
 
 // ── Providers ─────────────────────────────────────────────────────────────────
 
@@ -116,91 +119,103 @@ class _ProgressionReviewsPageState
   Widget build(BuildContext context) {
     final yearsAsync = ref.watch(_progressionYearsProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Progression Reviews'),
-        actions: [
-          if (_yearId != null)
-            Can(
-              permission: 'progression:decide',
-              child: TextButton.icon(
-                onPressed: () => _showCalculateDialog(),
-                icon: const Icon(Icons.add),
-                label: const Text('Calculate Review'),
-              ),
-            ),
-        ],
-      ),
-      body: yearsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text(friendlyError(e))),
-        data: (years) => Column(
-          children: [
-            // ── Year selector ──────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: DropdownButtonFormField<String>(
-                initialValue: _yearId,
-                decoration: const InputDecoration(
-                  labelText: 'Academic Year',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.calendar_today),
-                ),
-                hint: const Text('Select academic year'),
-                items: years.map((y) {
-                  final id = y['academicyearid'] as String;
-                  final label =
-                      '${formatAcademicYear(y['academicyear'])} • ${formatFormLevel(y['form']?.toString())} • ${y['term'].toString().replaceAll('_', ' ')}';
-                  return DropdownMenuItem(value: id, child: Text(label));
-                }).toList(),
-                onChanged: (v) {
-                  setState(() {
-                    _yearId = v;
-                  });
-                },
-              ),
-            ),
-
-            // ── Filter chips ───────────────────────────────────────────
+    return UiPage(
+      children: [
+        PageHead(
+          kicker: 'Assessments',
+          title: 'Progression & Weeding Review',
+          subtitle:
+              'Whole-student review across every subject and all three terms.',
+          actions: [
             if (_yearId != null)
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  children: ['ALL', 'PENDING', 'PROMOTED', 'RETAINED']
-                      .map(
-                        (f) => Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: FilterChip(
-                            label: Text(f),
-                            selected: _filter == f,
-                            onSelected: (_) => setState(() => _filter = f),
-                          ),
-                        ),
-                      )
-                      .toList(),
+              Can(
+                permission: 'progression:decide',
+                child: UiButton(
+                  'Calculate Review',
+                  icon: Icons.calculate_outlined,
+                  onPressed: () => _showCalculateDialog(),
                 ),
               ),
-            const SizedBox(height: 8),
-
-            // ── Review list ────────────────────────────────────────────
-            Expanded(
-              child: _yearId == null
-                  ? const Center(
-                      child: Text(
-                        'Select a year to view progression reviews',
-                        style: TextStyle(color: Colors.grey),
-                      ),
-                    )
-                  : _ReviewList(
-                      yearId: _yearId!,
-                      filter: _filter,
-                      canDecide: _canDecide,
-                    ),
-            ),
           ],
         ),
-      ),
+        yearsAsync.when(
+          loading: () => const Padding(
+            padding: EdgeInsets.symmetric(vertical: 48),
+            child: LoadingState(message: 'Loading academic periods…'),
+          ),
+          error: (e, _) => ErrorState(
+            error: e,
+            onRetry: () => ref.invalidate(_progressionYearsProvider),
+          ),
+          data: (years) => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // ── Year selector ──────────────────────────────────────────
+              UiCard(
+                padding: const EdgeInsets.all(12),
+                child: UiField(
+                  label: 'Academic period',
+                  child: DropdownButtonFormField<String>(
+                    initialValue: _yearId,
+                    hint: const Text('Select academic year'),
+                    items: years.map((y) {
+                      final id = y['academicyearid'] as String;
+                      final label =
+                          '${formatAcademicYear(y['academicyear'])} • ${formatFormLevel(y['form']?.toString())} • ${y['term'].toString().replaceAll('_', ' ')}';
+                      return DropdownMenuItem(value: id, child: Text(label));
+                    }).toList(),
+                    onChanged: (v) {
+                      setState(() {
+                        _yearId = v;
+                      });
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // ── Filter chips ───────────────────────────────────────────
+              if (_yearId != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final f in const [
+                        'ALL',
+                        'PENDING',
+                        'PROMOTED',
+                        'RETAINED',
+                      ])
+                        FilterChipBox(
+                          f,
+                          selected: _filter == f,
+                          onTap: () => setState(() => _filter = f),
+                        ),
+                    ],
+                  ),
+                ),
+
+              // ── Review list ────────────────────────────────────────────
+              if (_yearId == null)
+                const UiCard(
+                  child: UiEmptyState(
+                    icon: Icons.trending_up_outlined,
+                    title: 'Select an academic period',
+                    message: 'Select a year to view progression reviews.',
+                  ),
+                )
+              else
+                _ReviewList(
+                  yearId: _yearId!,
+                  filter: _filter,
+                  canDecide: _canDecide,
+                ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -213,7 +228,7 @@ class _ProgressionReviewsPageState
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text(friendlyError(error))));
+        ).showSnackBar(SnackBar(content: Text(rpcErrorMessage(error))));
       }
       return;
     }
@@ -281,7 +296,7 @@ class _ProgressionReviewsPageState
                         if (ctx.mounted) Navigator.pop(ctx);
                       } catch (error) {
                         setDialogState(
-                          () => errorMessage = friendlyError(error),
+                          () => errorMessage = rpcErrorMessage(error),
                         );
                       } finally {
                         if (ctx.mounted) {
@@ -434,96 +449,74 @@ class _ReviewList extends ConsumerWidget {
     final async = ref.watch(_progressionReviewsProvider(yearId));
 
     return async.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text(friendlyError(e))),
+      loading: () => const Padding(
+        padding: EdgeInsets.symmetric(vertical: 48),
+        child: LoadingState(message: 'Loading reviews…'),
+      ),
+      error: (e, _) => ErrorState(
+        error: e,
+        onRetry: () => ref.invalidate(_progressionReviewsProvider(yearId)),
+      ),
       data: (reviews) {
         final filtered = filter == 'ALL'
             ? reviews
             : reviews.where((r) => r['decision'] == filter).toList();
 
         if (filtered.isEmpty) {
-          return Center(
-            child: Text(
-              'No $filter reviews found.',
-              style: const TextStyle(color: Colors.grey),
+          return UiCard(
+            child: UiEmptyState(
+              icon: Icons.fact_check_outlined,
+              title: 'No $filter reviews found',
+              message: 'Use Calculate Review to create an annual review.',
             ),
           );
         }
 
-        return ListView.separated(
-          padding: const EdgeInsets.all(12),
-          itemCount: filtered.length,
-          separatorBuilder: (_, _) => const SizedBox(height: 8),
-          itemBuilder: (context, i) {
-            final r = filtered[i];
-            final student = r['student'] as Map<String, dynamic>;
-            final name = '${student['firstname']} ${student['lastname']}';
-            final decision = r['decision'] as String;
-            final avg = r['averagescore'];
-            final approver = r['staff'] as Map<String, dynamic>?;
-
-            return Card(
-              child: ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: _decisionColor(decision),
-                  child: Icon(
-                    _decisionIcon(decision),
-                    color: Colors.white,
-                    size: 20,
+        return DataTableCard(
+          columns: const [
+            UiColumn('Student', flex: 16),
+            UiColumn('Average', flex: 7),
+            UiColumn('Decided by', flex: 12, hideOnPhone: true),
+            UiColumn('Decision', width: 124),
+          ],
+          rows: [
+            for (final r in filtered)
+              () {
+                final student = r['student'] as Map<String, dynamic>;
+                final name = '${student['firstname']} ${student['lastname']}';
+                final decision = r['decision'] as String;
+                final approver = r['staff'] as Map<String, dynamic>?;
+                return UiTableRow([
+                  PersonCell(name),
+                  UiCellText('${r['averagescore'] ?? '—'}', bold: true),
+                  UiCellText(
+                    approver == null
+                        ? '—'
+                        : '${approver['firstname']} ${approver['lastname']}',
                   ),
-                ),
-                title: Text(
-                  name,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Average Score: ${avg ?? '—'}'),
-                    if (approver != null)
-                      Text(
-                        'By: ${approver['firstname']} ${approver['lastname']}',
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                  ],
-                ),
-                trailing: decision == 'PENDING' && canDecide
-                    ? _DecisionButtons(
-                        reviewId: r['reviewid'] as String,
-                        yearId: yearId,
-                        studentName: name,
-                      )
-                    : Chip(
-                        label: Text(decision),
-                        backgroundColor: _decisionColor(
-                          decision,
-                        ).withValues(alpha: 0.15),
-                        labelStyle: TextStyle(
-                          color: _decisionColor(decision),
-                          fontWeight: FontWeight.bold,
+                  decision == 'PENDING' && canDecide
+                      ? _DecisionButtons(
+                          reviewId: r['reviewid'] as String,
+                          yearId: yearId,
+                          studentName: name,
+                        )
+                      : Align(
+                          alignment: Alignment.centerLeft,
+                          child: StatusPill(decision, tone: _tone(decision)),
                         ),
-                      ),
-                isThreeLine: approver != null,
-              ),
-            );
-          },
+                ]);
+              }(),
+          ],
         );
       },
     );
   }
 
-  Color _decisionColor(String d) => switch (d) {
-    'PROMOTED' => Colors.green,
-    'RETAINED' => Colors.orange,
-    'REJECTED' => Colors.red,
-    _ => Colors.grey,
-  };
-
-  IconData _decisionIcon(String d) => switch (d) {
-    'PROMOTED' => Icons.check_circle,
-    'RETAINED' => Icons.pause_circle,
-    'REJECTED' => Icons.cancel,
-    _ => Icons.hourglass_empty,
+  StatusTone _tone(String d) => switch (d) {
+    'PROMOTED' => StatusTone.success,
+    'RETAINED' => StatusTone.warning,
+    'REJECTED' => StatusTone.danger,
+    _ => StatusTone.neutral,
   };
 }
 
@@ -600,7 +593,7 @@ class _DecisionButtons extends ConsumerWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text(friendlyError(error))));
+        ).showSnackBar(SnackBar(content: Text(rpcErrorMessage(error))));
       }
     }
   }

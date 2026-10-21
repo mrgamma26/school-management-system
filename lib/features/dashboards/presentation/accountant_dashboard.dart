@@ -1,78 +1,121 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-import '../../../core/widgets/app_widgets.dart';
+
 import '../../../widgets/app_shell.dart';
-import '../../authentication/presentation/providers/auth_provider.dart';
+import 'dashboard_charts.dart';
 import 'dashboard_scaffold.dart';
 
+/// Screen 6 - Accountant dashboard.
 class AccountantDashboard extends ConsumerWidget {
   const AccountantDashboard({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    ref.watch(authProvider);
     return AppShell(
       homeRoute: '/accountant/home',
-      body: DashboardBody(
-        subtitle: 'Manage school finances, fee structures and payment records',
-        roleIcon: Icons.account_balance,
-        roleColor: AppColors.roleAccountant,
-        children: [
-          DashGrid(
-            sectionTitle: 'Finance',
-            sectionIcon: Icons.account_balance_wallet,
-            tiles: [
-              // "Add Payment" tile is wired in Step 7 — placeholder route
-              // until student picker is added. For now show all payments.
-              _T(
-                'All Payments',
-                Icons.payments,
-                AppColors.success,
-                () => context.go('/finance/payments'),
-              ),
-              _T(
-                'Fee Structures',
-                Icons.price_change,
-                AppColors.warning,
-                () => context.go('/finance/fees'),
-              ),
-            ],
+      body: RoleDashboard(
+        kicker: '',
+        title: 'Accountant Dashboard',
+        subtitle: '',
+        charts: accountantCharts(),
+        quickStart: const [
+          DashboardLink(
+            'Student Accounts',
+            Icons.account_balance_wallet_outlined,
+            '/finance/accounts',
+            detail: 'Find a student and record a payment',
           ),
-          DashGrid(
-            sectionTitle: 'Students',
-            sectionIcon: Icons.people_outline,
-            tiles: [
-              _T(
-                'Students & Accounts',
-                Icons.account_box,
-                AppColors.roleAdmin,
-                () => context.go('/students'),
-              ),
-            ],
+          DashboardLink(
+            'Overdue Accounts',
+            Icons.warning_amber_rounded,
+            '/finance/overdue',
+            detail: 'Learners who still owe fees',
           ),
-          DashGrid(
-            sectionTitle: 'Reports & Calendar',
-            sectionIcon: Icons.bar_chart,
-            tiles: [
-              _T(
-                'Reports',
-                Icons.analytics,
-                AppColors.roleAdmin,
-                () => context.go('/reports'),
-              ),
-              _T(
-                'Calendar',
-                Icons.calendar_month,
-                AppColors.accent,
-                () => context.go('/calendar'),
-              ),
-            ],
+          DashboardLink(
+            'Payments',
+            Icons.payments_outlined,
+            '/finance/payments',
+            detail: 'Review posted receipts',
           ),
+        ],
+        queueRole: 'ACCOUNTANT',
+        metrics: [
+          DashboardMetric.table(
+            icon: Icons.payments_outlined,
+            label: 'Payments recorded',
+            table: 'payment',
+            note: 'Posted receipts',
+            route: '/finance/payments',
+          ),
+          DashboardMetric.table(
+            icon: Icons.receipt_long_outlined,
+            label: 'Deposit slips',
+            table: 'deposit_slips',
+            note: 'Uploaded evidence',
+          ),
+          DashboardMetric.table(
+            icon: Icons.price_change_outlined,
+            label: 'Fee structures',
+            table: 'feestructure',
+            note: 'Charging structures',
+            route: '/finance/fees',
+          ),
+          DashboardMetric.table(
+            icon: Icons.account_balance_wallet_outlined,
+            label: 'Student accounts',
+            table: 'student',
+            note: 'Learners with accounts',
+            route: '/students',
+          ),
+        ],
+        queueTitle: 'Verification queue',
+        queueNote: 'Finance work',
+        queue: const [
+          DashboardLink(
+            'Student accounts',
+            Icons.account_balance_wallet_outlined,
+            '/students',
+            detail: 'Review balances before recording a payment',
+          ),
+          DashboardLink(
+            'Payment ledger',
+            Icons.receipt_long_outlined,
+            '/finance/payments',
+            detail: 'Review posted receipts and reversals',
+          ),
+          DashboardLink(
+            'Fee structures',
+            Icons.price_change_outlined,
+            '/finance/fees',
+            detail: 'Maintain the current charging structure',
+          ),
+        ],
+        groups: const [
+          DashboardGroup('Finance', [
+            DashboardLink('All Payments', Icons.payments_outlined, '/finance/payments'),
+            DashboardLink(
+              'Fee Structures',
+              Icons.price_change_outlined,
+              '/finance/fees',
+            ),
+          ]),
+          DashboardGroup('Students', [
+            DashboardLink(
+              'Students & Accounts',
+              Icons.account_box_outlined,
+              '/students',
+            ),
+          ]),
+          DashboardGroup('Reports & calendar', [
+            DashboardLink('Reports', Icons.analytics_outlined, '/reports'),
+            DashboardLink(
+              'Calendar',
+              Icons.calendar_month_outlined,
+              '/calendar',
+            ),
+          ]),
         ],
       ),
     );
   }
 }
-
-typedef _T = TileData;

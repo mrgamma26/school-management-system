@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../../core/widgets/app_widgets.dart' show ErrorState, LoadingState;
+import '../../../theme/app_tokens.dart';
+import '../../../widgets/ui_kit.dart';
 import '../data/student_repository.dart';
 
 class StudentSubjectsPage extends StatefulWidget {
@@ -114,48 +117,67 @@ class _StudentSubjectsPageState extends State<StudentSubjectsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Student Subjects')),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _loading ? null : _add,
-        icon: const Icon(Icons.add),
-        label: const Text('Add Subject'),
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-          ? Center(child: Text(_error!))
-          : _selected.isEmpty
-          ? const Center(child: Text('No individual subjects added yet.'))
-          : ListView.separated(
-              padding: const EdgeInsets.all(12),
-              itemCount: _selected.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 8),
-              itemBuilder: (context, index) {
-                final row = _selected[index];
-                final assignment =
-                    row['classsubject'] as Map<String, dynamic>? ?? {};
-                return Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.menu_book_outlined),
-                    title: Text(_assignmentLabel(assignment)),
-                    trailing: IconButton(
-                      tooltip: 'Remove subject',
-                      icon: const Icon(
-                        Icons.remove_circle_outline,
-                        color: Colors.red,
-                      ),
-                      onPressed: () async {
-                        await _repository.removeStudentSubject(
-                          row['studentsubjectid'] as String,
-                        );
-                        await _load();
-                      },
-                    ),
-                  ),
-                );
-              },
+    return UiPage(
+      children: [
+        PageHead(
+          kicker: 'Students',
+          title: 'Student Subjects',
+          subtitle: 'Individual subject enrolments for this learner.',
+          actions: [
+            UiButton(
+              'Add Subject',
+              icon: Icons.add_rounded,
+              onPressed: _loading ? null : _add,
             ),
+          ],
+        ),
+        if (_loading)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 48),
+            child: LoadingState(message: 'Loading subjects…'),
+          )
+        else if (_error != null)
+          ErrorState(error: _error!, onRetry: _load)
+        else if (_selected.isEmpty)
+          const UiCard(
+            child: UiEmptyState(
+              icon: Icons.menu_book_outlined,
+              title: 'No individual subjects added yet',
+            ),
+          )
+        else
+          DataTableCard(
+            columns: const [
+              UiColumn('Subject, teacher and class', flex: 20),
+              UiColumn('', width: 48),
+            ],
+            rows: [
+              for (final row in _selected)
+                UiTableRow([
+                  UiCellText(
+                    _assignmentLabel(
+                      row['classsubject'] as Map<String, dynamic>? ?? {},
+                    ),
+                    bold: true,
+                  ),
+                  IconButton(
+                    tooltip: 'Remove subject',
+                    icon: const Icon(
+                      Icons.remove_circle_outline,
+                      size: 18,
+                      color: AppColors.danger,
+                    ),
+                    onPressed: () async {
+                      await _repository.removeStudentSubject(
+                        row['studentsubjectid'] as String,
+                      );
+                      await _load();
+                    },
+                  ),
+                ]),
+            ],
+          ),
+      ],
     );
   }
 }

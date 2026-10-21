@@ -19,7 +19,6 @@ CREATE TABLE IF NOT EXISTS public.notification (
   createdat      TIMESTAMPTZ NOT NULL DEFAULT now(),
   updatedat      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
 -- ─────────────────────────────────────────────
 -- teachercomment
 -- A narrative comment written by a teacher about a student for a term.
@@ -35,7 +34,6 @@ CREATE TABLE IF NOT EXISTS public.teachercomment (
   -- One comment per student per teacher per term
   UNIQUE (studentid, staffid, academicyearid)
 );
-
 -- ─────────────────────────────────────────────
 -- calendarevent
 -- A school event attached to a class (or school-wide when classid is null).

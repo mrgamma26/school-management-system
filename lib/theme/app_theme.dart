@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'app_tokens.dart';
 
 class AppTheme {
@@ -41,7 +42,9 @@ class AppTheme {
     final base = ThemeData(useMaterial3: true, colorScheme: cs);
     return base.copyWith(
       scaffoldBackgroundColor: AppColors.background,
-      textTheme: AppText.buildTextTheme(base.textTheme),
+      textTheme: GoogleFonts.nunitoTextTheme(
+        AppText.buildTextTheme(base.textTheme),
+      ),
 
       // AppBar
       appBarTheme: AppBarTheme(
@@ -113,8 +116,8 @@ class AppTheme {
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primary,
           foregroundColor: Colors.white,
-          minimumSize: const Size.fromHeight(52),
-          shape: RoundedRectangleBorder(borderRadius: Radii.mdBr),
+          minimumSize: const Size.fromHeight(46),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           textStyle: const TextStyle(
             fontFamily: AppText.fontBody,
             fontSize: 15,

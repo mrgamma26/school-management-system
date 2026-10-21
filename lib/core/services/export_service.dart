@@ -1,12 +1,41 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:csv/csv.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import '../../features/finance/domain/models/payment_receipt.dart';
+import '../../features/settings/data/school_settings_repository.dart';
 
 /// Service for exporting data to PDF and CSV formats
 class ExportService {
+  static Future<({String name, Uint8List? logo})> _branding() async {
+    final repository = SchoolSettingsRepository();
+    final branding = await repository.loadPublicBranding();
+    return (
+      name: branding.schoolName,
+      logo: await repository.downloadLogo(branding.logoPath),
+    );
+  }
+
+  static pw.Widget _brandHeader(({String name, Uint8List? logo}) branding) {
+    return pw.Row(
+      children: [
+        if (branding.logo != null) ...[
+          pw.Image(pw.MemoryImage(branding.logo!), width: 38, height: 38),
+          pw.SizedBox(width: 10),
+        ],
+        pw.Expanded(
+          child: pw.Text(
+            branding.name,
+            style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+          ),
+        ),
+      ],
+    );
+  }
+
   /// Export data to PDF with custom header and table
   static Future<void> exportToPdf({
     required String title,
@@ -15,6 +44,7 @@ class ExportService {
     required List<List<String>> rows,
     String? footer,
   }) async {
+    final branding = await _branding();
     final pdf = pw.Document();
 
     // Build PDF document
@@ -30,6 +60,8 @@ class ExportService {
               child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
+                  _brandHeader(branding),
+                  pw.SizedBox(height: 12),
                   pw.Text(
                     title,
                     style: pw.TextStyle(
@@ -182,6 +214,7 @@ class ExportService {
     required int activeInYear,
     required Map<String, int> byClass,
   }) async {
+    final branding = await _branding();
     final summaryRows = [
       ['Total Enrolled', '$totalEnrolled'],
       ['Male Students', '$maleCount'],
@@ -207,6 +240,8 @@ class ExportService {
               child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
+                  _brandHeader(branding),
+                  pw.SizedBox(height: 12),
                   pw.Text(
                     'Enrolment Report',
                     style: pw.TextStyle(
@@ -241,7 +276,9 @@ class ExportService {
                 fontWeight: pw.FontWeight.bold,
                 color: PdfColors.white,
               ),
-              headerDecoration: const pw.BoxDecoration(color: PdfColors.indigo),
+              headerDecoration: const pw.BoxDecoration(
+                color: PdfColor.fromInt(0xFF1565C0),
+              ),
               border: pw.TableBorder.all(color: PdfColors.grey300),
               oddRowDecoration: const pw.BoxDecoration(
                 color: PdfColors.grey100,
@@ -268,7 +305,7 @@ class ExportService {
                   color: PdfColors.white,
                 ),
                 headerDecoration: const pw.BoxDecoration(
-                  color: PdfColors.indigo,
+                  color: PdfColor.fromInt(0xFF1565C0),
                 ),
                 border: pw.TableBorder.all(color: PdfColors.grey300),
                 oddRowDecoration: const pw.BoxDecoration(
@@ -300,6 +337,7 @@ class ExportService {
     required Map<String, String> avgBySubject,
     required Map<String, int> progressionCounts,
   }) async {
+    final branding = await _branding();
     final subjectRows = avgBySubject.entries
         .map((e) => [e.key, '${e.value}%'])
         .toList();
@@ -322,6 +360,8 @@ class ExportService {
               child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
+                  _brandHeader(branding),
+                  pw.SizedBox(height: 12),
                   pw.Text(
                     'Performance Report',
                     style: pw.TextStyle(
@@ -451,6 +491,125 @@ class ExportService {
       filename: 'Students_${DateTime.now().millisecondsSinceEpoch}',
       headers: headers,
       rows: rows,
+    );
+  }
+
+  // ── Payment receipt ──────────────────────────────────────────────────────
+
+  /// Builds the official payment receipt as PDF bytes. [schoolName] and
+  /// [logo] come from the school branding; the logo is optional.
+  static Future<Uint8List> buildReceiptPdf(
+    PaymentReceiptData receipt, {
+    required String schoolName,
+    Uint8List? logo,
+  }) async {
+    final pdf = pw.Document();
+    pw.Widget row(String label, String value, {bool bold = false}) {
+      return pw.Padding(
+        padding: const pw.EdgeInsets.symmetric(vertical: 5),
+        child: pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Text(
+              label,
+              style: const pw.TextStyle(fontSize: 11, color: PdfColors.grey700),
+            ),
+            pw.Text(
+              value,
+              style: pw.TextStyle(
+                fontSize: 11,
+                fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a5,
+        margin: const pw.EdgeInsets.all(28),
+        build: (context) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+          children: [
+            _brandHeader((name: schoolName, logo: logo)),
+            pw.SizedBox(height: 6),
+            pw.Text(
+              'OFFICIAL PAYMENT RECEIPT',
+              style: pw.TextStyle(
+                fontSize: 10,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.grey700,
+              ),
+            ),
+            pw.Divider(thickness: 1.5),
+            row('Receipt number', receipt.receiptNumber, bold: true),
+            row('Received from', receipt.studentName),
+            if (receipt.className != null) row('Class', receipt.className!),
+            row('Payment date', _receiptDate(receipt.paymentDate)),
+            row('Applied to', receipt.feeType),
+            row('Method', receipt.methodLabel),
+            if (receipt.reference != null && receipt.reference!.isNotEmpty)
+              row('Reference', receipt.reference!),
+            pw.Divider(),
+            row('Amount received', _receiptMoney(receipt.amount), bold: true),
+            row('Previous balance', _receiptMoney(receipt.previousBalance)),
+            row(
+              'Remaining balance',
+              _receiptMoney(receipt.remainingBalance),
+              bold: true,
+            ),
+            pw.Spacer(),
+            pw.Text(
+              'Keep this receipt for your records. Posted payments are never '
+              'edited; corrections are made by a recorded reversal.',
+              style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
+            ),
+          ],
+        ),
+      ),
+    );
+    return pdf.save();
+  }
+
+  static String _receiptMoney(double value) {
+    final fixed = value.abs().toStringAsFixed(2);
+    final parts = fixed.split('.');
+    final grouped = parts.first.replaceAllMapped(
+      RegExp(r'\B(?=(\d{3})+(?!\d))'),
+      (_) => ',',
+    );
+    return '${value < 0 ? '-' : ''}MWK $grouped.${parts[1]}';
+  }
+
+  static String _receiptDate(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  static Future<Uint8List> _receiptBytes(PaymentReceiptData receipt) async {
+    final branding = await _branding();
+    return buildReceiptPdf(
+      receipt,
+      schoolName: branding.name,
+      logo: branding.logo,
+    );
+  }
+
+  /// Opens the system print dialog with the receipt.
+  static Future<void> printReceipt(PaymentReceiptData receipt) async {
+    final bytes = await _receiptBytes(receipt);
+    await Printing.layoutPdf(
+      onLayout: (_) async => bytes,
+      name: 'Receipt_${receipt.receiptNumber}.pdf',
+    );
+  }
+
+  /// Saves/shares the receipt as a PDF file (download on web and desktop).
+  static Future<void> downloadReceiptPdf(PaymentReceiptData receipt) async {
+    final bytes = await _receiptBytes(receipt);
+    await Printing.sharePdf(
+      bytes: bytes,
+      filename: 'Receipt_${receipt.receiptNumber}.pdf',
     );
   }
 }

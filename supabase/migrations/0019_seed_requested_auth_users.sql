@@ -35,7 +35,6 @@ ON CONFLICT (userid) DO UPDATE SET
   username = EXCLUDED.username,
   roleid = EXCLUDED.roleid,
   isactive = true;
-
 -- Verify all requested Auth users now have active application profiles.
 SELECT
   u.email,

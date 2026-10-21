@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/widgets/app_widgets.dart' show LoadingState;
+import '../../../widgets/ui_kit.dart';
 import '../../academics/data/academic_repository.dart';
 import '../../authentication/presentation/providers/auth_provider.dart';
 import '../data/student_repository.dart';
@@ -48,23 +50,23 @@ class TeacherClassStudentsPage extends ConsumerWidget {
     final user = ref.watch(authProvider).user;
     final isTeacher = user?.roleName.trim().toUpperCase() == 'TEACHER';
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Class Students')),
+    return PageFrame(
+      kicker: 'Classes',
+      title: className,
+      subtitle: 'Academic year: $academicYearLabel',
       body: !isTeacher || user == null
-          ? const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text(
-                  'This student list is available to the assigned teacher only.',
-                ),
+          ? const UiCard(
+              child: UiEmptyState(
+                icon: Icons.lock_outline_rounded,
+                title: 'Assigned teacher only',
+                message:
+                    'This student list is available to the assigned teacher only.',
               ),
             )
           : _RosterBody(
               userId: user.userId,
               classId: classId,
               academicYearId: academicYearId,
-              className: className,
-              academicYearLabel: academicYearLabel,
             ),
     );
   }
@@ -74,15 +76,11 @@ class _RosterBody extends ConsumerWidget {
   final String userId;
   final String classId;
   final String academicYearId;
-  final String className;
-  final String academicYearLabel;
 
   const _RosterBody({
     required this.userId,
     required this.classId,
     required this.academicYearId,
-    required this.className,
-    required this.academicYearLabel,
   });
 
   @override
@@ -95,56 +93,44 @@ class _RosterBody extends ConsumerWidget {
       )),
     );
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Text(className, style: Theme.of(context).textTheme.titleLarge),
+    return students.when(
+      loading: () => const LoadingState(message: 'Loading students…'),
+      error: (_, _) => const UiCard(
+        child: UiEmptyState(
+          icon: Icons.error_outline_rounded,
+          title: 'The student list could not be loaded',
+          message: 'Please return to your classes and try again.',
         ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Text('Academic year: $academicYearLabel'),
-        ),
-        const SizedBox(height: 12),
-        Expanded(
-          child: students.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (_, _) => const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text(
-                  'The student list could not be loaded. Please return to your classes and try again.',
-                  textAlign: TextAlign.center,
-                ),
-              ),
+      ),
+      data: (items) {
+        if (items.isEmpty) {
+          return const UiCard(
+            child: UiEmptyState(
+              icon: Icons.groups_outlined,
+              title: 'No active students are enrolled in this class',
             ),
-            data: (items) {
-              if (items.isEmpty) {
-                return const Center(
-                  child: Text('No active students are enrolled in this class.'),
-                );
-              }
+          );
+        }
 
-              return ListView.separated(
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
-                itemCount: items.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 6),
-                itemBuilder: (context, index) {
-                  final student = items[index];
-                  return Card(
-                    child: ListTile(
-                      leading: CircleAvatar(child: Text('${index + 1}')),
-                      title: Text(student.fullName),
-                      subtitle: Text('Student ID: ${student.studentId}'),
-                    ),
-                  );
-                },
-              );
-            },
+        return SingleChildScrollView(
+          padding: const EdgeInsets.only(bottom: 24),
+          child: DataTableCard(
+            columns: const [
+              UiColumn('#', width: 36),
+              UiColumn('Student', flex: 16),
+              UiColumn('Student ID', flex: 12, hideOnPhone: true),
+            ],
+            rows: [
+              for (var i = 0; i < items.length; i++)
+                UiTableRow([
+                  UiCellText('${i + 1}'),
+                  PersonCell(items[i].fullName),
+                  UiCellText(items[i].studentId),
+                ]),
+            ],
           ),
-        ),
-      ],
+        );
+      },
     );
   }
 }

@@ -1,7 +1,6 @@
 -- Keep annual progression evidence inside the learner's source form calendar
 -- and use the renamed class columns when creating the next placement.
 BEGIN;
-
 CREATE OR REPLACE FUNCTION public.calculate_student_annual_result(
   p_student_id uuid,
   p_school_year integer
@@ -144,7 +143,6 @@ BEGIN
     END
   );
 END $$;
-
 CREATE OR REPLACE FUNCTION public.refresh_progression_review(
   p_student_id uuid,
   p_school_year integer
@@ -189,7 +187,6 @@ BEGIN
   END IF;
   RETURN v_result || jsonb_build_object('reviewId', v_review);
 END $$;
-
 CREATE OR REPLACE FUNCTION public.decide_and_place_student(
   p_review_id uuid,
   p_decision text,
@@ -316,11 +313,9 @@ BEGIN
     'targetClassId', v_target_class
   );
 END $$;
-
 REVOKE ALL ON FUNCTION public.decide_and_place_student(uuid, text, uuid, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.calculate_student_annual_result(uuid, integer),
   public.refresh_progression_review(uuid, integer),
   public.decide_and_place_student(uuid, text, uuid, text) TO authenticated;
-
 NOTIFY pgrst, 'reload schema';
 COMMIT;

@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../../core/auth/school_role_access.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/database/supabase_client.dart';
 import '../../../../core/errors/app_exception.dart';
@@ -109,6 +111,7 @@ class AuthNotifier extends Notifier<AuthState> {
           roleName: state.user!.roleName,
           mustChangePassword: false,
           isActive: state.user!.isActive,
+          roles: state.user!.roles,
         );
         state = state.copyWith(isLoading: false, user: updated);
       } else {
@@ -127,10 +130,35 @@ final authProvider = NotifierProvider<AuthNotifier, AuthState>(
   AuthNotifier.new,
 );
 
+class ActiveWorkspaceRoleNotifier extends Notifier<String> {
+  @override
+  String build() {
+    final user = ref.watch(authProvider).user;
+    return user?.roleName.trim().toUpperCase() ?? '';
+  }
+
+  void switchTo(String role) {
+    final normalized = role.trim().toUpperCase();
+    final user = ref.read(authProvider).user;
+    if (user != null && user.roles.containsKey(normalized)) state = normalized;
+  }
+}
+
+final activeWorkspaceRoleProvider =
+    NotifierProvider<ActiveWorkspaceRoleNotifier, String>(
+      ActiveWorkspaceRoleNotifier.new,
+    );
+
 /// Loads the permissions granted to the current user's role.
 final permissionsProvider = FutureProvider<Set<String>>((ref) async {
   final user = ref.watch(authProvider).user;
   if (user == null) return <String>{};
-
-  return AuthRepository().loadPermissionsForRole(user.roleId);
+  final activeRole = ref.watch(activeWorkspaceRoleProvider);
+  final granted = await AuthRepository().loadPermissionsForRole(
+    user.roleIdFor(activeRole) ?? user.roleId,
+  );
+  return {
+    ...granted,
+    ...impliedPermissionsFor(activeRole.isEmpty ? user.roleName : activeRole),
+  };
 });

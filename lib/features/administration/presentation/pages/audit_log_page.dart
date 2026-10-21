@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/data/audit_repository.dart';
-import '../../../../widgets/skeleton_loader.dart';
+import '../../../../core/widgets/app_widgets.dart'
+    show ErrorState, LoadingState;
+import '../../../../theme/app_tokens.dart';
+import '../../../../widgets/ui_kit.dart';
 
 // ── Providers ─────────────────────────────────────────────────────────────────
 
@@ -62,7 +65,7 @@ final _auditTablesProvider = FutureProvider<List<String>>((ref) async {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-/// Audit log viewer — Super User / System Admin only.
+/// Screen 64 - Audit log viewer (Super User / System Admin only).
 /// Supports filtering by action keyword, table name, and date range.
 class AuditLogPage extends ConsumerStatefulWidget {
   const AuditLogPage({super.key});
@@ -72,13 +75,21 @@ class AuditLogPage extends ConsumerStatefulWidget {
 }
 
 class _AuditLogPageState extends ConsumerState<AuditLogPage> {
+  static const _pageSize = 25;
+
   final _actionCtrl = TextEditingController();
   bool _showFilters = false;
+  int _page = 0;
 
   @override
   void dispose() {
     _actionCtrl.dispose();
     super.dispose();
+  }
+
+  void _setFilters(_AuditFilters next) {
+    _page = 0;
+    ref.read(_auditFiltersProvider.notifier).update(next);
   }
 
   @override
@@ -87,82 +98,79 @@ class _AuditLogPageState extends ConsumerState<AuditLogPage> {
     final logAsync = ref.watch(_auditLogProvider);
     final tablesAsync = ref.watch(_auditTablesProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Audit Log'),
-        actions: [
-          IconButton(
-            icon: Icon(
-              _showFilters ? Icons.filter_alt : Icons.filter_alt_outlined,
-            ),
-            tooltip: 'Filters',
-            onPressed: () => setState(() => _showFilters = !_showFilters),
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Refresh',
-            onPressed: () => ref.invalidate(_auditLogProvider),
-          ),
-        ],
-      ),
-      body: Column(
+    return PageFrame(
+      kicker: 'Administration',
+      title: 'Audit Log',
+      subtitle: 'Who changed what, and when. Entries cannot be edited.',
+      actions: [
+        UiButton.secondary(
+          _showFilters ? 'Hide filters' : 'Filters',
+          icon: _showFilters ? Icons.filter_alt : Icons.filter_alt_outlined,
+          onPressed: () => setState(() => _showFilters = !_showFilters),
+        ),
+        UiButton.secondary(
+          'Refresh',
+          icon: Icons.refresh_rounded,
+          onPressed: () => ref.invalidate(_auditLogProvider),
+        ),
+      ],
+      body: ListView(
+        padding: const EdgeInsets.only(bottom: 24),
         children: [
           // ── Filter panel ─────────────────────────────────────────────────
           if (_showFilters)
-            Card(
-              margin: const EdgeInsets.all(12),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Panel(
+                title: 'Filter entries',
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // Action keyword
-                    TextField(
-                      controller: _actionCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Action contains…',
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                        prefixIcon: Icon(Icons.search),
-                      ),
-                      onSubmitted: (v) => ref
-                          .read(_auditFiltersProvider.notifier)
-                          .update(filters.copyWith(action: v.trim())),
-                    ),
-                    const SizedBox(height: 8),
-                    // Table filter
-                    tablesAsync.when(
-                      loading: () => const SizedBox.shrink(),
-                      error: (_, _) => const SizedBox.shrink(),
-                      data: (tables) => DropdownButtonFormField<String?>(
-                        initialValue: filters.table,
-                        decoration: const InputDecoration(
-                          labelText: 'Table',
-                          border: OutlineInputBorder(),
-                          isDense: true,
-                        ),
-                        items: [
-                          const DropdownMenuItem(
-                            value: null,
-                            child: Text('All tables'),
-                          ),
-                          ...tables.map(
-                            (t) => DropdownMenuItem(value: t, child: Text(t)),
-                          ),
-                        ],
-                        onChanged: (v) => ref
-                            .read(_auditFiltersProvider.notifier)
-                            .update(filters.copyWith(table: v)),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    // Date range
-                    Row(
+                    FieldGrid(
                       children: [
-                        Expanded(
+                        UiField(
+                          label: 'Action contains',
+                          child: TextField(
+                            controller: _actionCtrl,
+                            decoration: const InputDecoration(
+                              hintText: 'e.g. PAYMENT',
+                              prefixIcon: Icon(Icons.search, size: 19),
+                            ),
+                            onSubmitted: (v) =>
+                                _setFilters(filters.copyWith(action: v.trim())),
+                          ),
+                        ),
+                        UiField(
+                          label: 'Table',
+                          child: tablesAsync.when(
+                            loading: () => const LinearProgressIndicator(),
+                            error: (_, _) => const Text('Tables unavailable.'),
+                            data: (tables) => DropdownButtonFormField<String?>(
+                              initialValue: filters.table,
+                              isExpanded: true,
+                              items: [
+                                const DropdownMenuItem(
+                                  value: null,
+                                  child: Text('All tables'),
+                                ),
+                                ...tables.map(
+                                  (t) => DropdownMenuItem(
+                                    value: t,
+                                    child: Text(t),
+                                  ),
+                                ),
+                              ],
+                              onChanged: (v) =>
+                                  _setFilters(filters.copyWith(table: v)),
+                            ),
+                          ),
+                        ),
+                        UiField(
+                          label: 'From date',
                           child: _DateButton(
                             label: filters.from != null
-                                ? _fmt(filters.from!)
-                                : 'From date',
+                                ? formatUiDate(filters.from)
+                                : 'Any date',
                             onTap: () async {
                               final d = await showDatePicker(
                                 context: context,
@@ -171,19 +179,17 @@ class _AuditLogPageState extends ConsumerState<AuditLogPage> {
                                 lastDate: DateTime.now(),
                               );
                               if (d != null) {
-                                ref
-                                    .read(_auditFiltersProvider.notifier)
-                                    .update(filters.copyWith(from: d));
+                                _setFilters(filters.copyWith(from: d));
                               }
                             },
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
+                        UiField(
+                          label: 'To date',
                           child: _DateButton(
                             label: filters.to != null
-                                ? _fmt(filters.to!)
-                                : 'To date',
+                                ? formatUiDate(filters.to)
+                                : 'Any date',
                             onTap: () async {
                               final d = await showDatePicker(
                                 context: context,
@@ -192,35 +198,35 @@ class _AuditLogPageState extends ConsumerState<AuditLogPage> {
                                 lastDate: DateTime.now(),
                               );
                               if (d != null) {
-                                ref
-                                    .read(_auditFiltersProvider.notifier)
-                                    .update(filters.copyWith(to: d));
+                                _setFilters(filters.copyWith(to: d));
                               }
                             },
                           ),
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.clear, color: Colors.red),
-                          tooltip: 'Clear filters',
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        UiButton(
+                          'Apply filters',
+                          icon: Icons.search,
+                          onPressed: () => _setFilters(
+                            filters.copyWith(action: _actionCtrl.text.trim()),
+                          ),
+                        ),
+                        UiButton.secondary(
+                          'Clear filters',
+                          icon: Icons.clear,
                           onPressed: () {
                             _actionCtrl.clear();
+                            _page = 0;
                             ref.read(_auditFiltersProvider.notifier).reset();
                           },
                         ),
                       ],
-                    ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        onPressed: () => ref
-                            .read(_auditFiltersProvider.notifier)
-                            .update(
-                              filters.copyWith(action: _actionCtrl.text.trim()),
-                            ),
-                        icon: const Icon(Icons.search),
-                        label: const Text('Apply Filters'),
-                      ),
                     ),
                   ],
                 ),
@@ -232,136 +238,121 @@ class _AuditLogPageState extends ConsumerState<AuditLogPage> {
               filters.table != null ||
               filters.from != null ||
               filters.to != null)
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              child: Row(
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 6,
                 children: [
                   if (filters.action != null)
                     _FilterChip(
                       label: 'action: ${filters.action}',
-                      onRemove: () => ref
-                          .read(_auditFiltersProvider.notifier)
-                          .update(filters.copyWith(action: null)),
+                      onRemove: () =>
+                          _setFilters(filters.copyWith(action: null)),
                     ),
                   if (filters.table != null)
                     _FilterChip(
                       label: 'table: ${filters.table}',
-                      onRemove: () => ref
-                          .read(_auditFiltersProvider.notifier)
-                          .update(filters.copyWith(table: null)),
+                      onRemove: () =>
+                          _setFilters(filters.copyWith(table: null)),
                     ),
                   if (filters.from != null)
                     _FilterChip(
-                      label: 'from: ${_fmt(filters.from!)}',
-                      onRemove: () => ref
-                          .read(_auditFiltersProvider.notifier)
-                          .update(filters.copyWith(from: null)),
+                      label: 'from: ${formatUiDate(filters.from)}',
+                      onRemove: () => _setFilters(filters.copyWith(from: null)),
                     ),
                   if (filters.to != null)
                     _FilterChip(
-                      label: 'to: ${_fmt(filters.to!)}',
-                      onRemove: () => ref
-                          .read(_auditFiltersProvider.notifier)
-                          .update(filters.copyWith(to: null)),
+                      label: 'to: ${formatUiDate(filters.to)}',
+                      onRemove: () => _setFilters(filters.copyWith(to: null)),
                     ),
                 ],
               ),
             ),
 
-          // ── Log list ─────────────────────────────────────────────────────
-          Expanded(
-            child: logAsync.when(
-              loading: () =>
-                  const SkeletonListLoader(itemCount: 6, itemHeight: 88),
-              error: (e, _) => Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.lock, size: 48, color: Colors.grey),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Could not load audit log.\n$e',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.grey),
-                    ),
-                  ],
-                ),
-              ),
-              data: (entries) {
-                if (entries.isEmpty) {
-                  return const Center(
-                    child: Text(
-                      'No audit log entries match the current filters.',
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  );
-                }
-                return ListView.separated(
-                  padding: const EdgeInsets.all(12),
-                  itemCount: entries.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 6),
-                  itemBuilder: (context, i) {
-                    final e = entries[i];
-                    final user = e['systemuser'] as Map?;
-                    final action = e['action'] as String;
-                    final table = e['tablename'] as String;
-                    final role = e['actorrole'] as String? ?? '—';
-                    final ts = _fmtTs(e['createdat'] as String);
-                    return Card(
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: _actionColor(action),
-                          radius: 20,
-                          child: Icon(
-                            _actionIcon(action),
-                            color: Colors.white,
-                            size: 16,
-                          ),
-                        ),
-                        title: Text(
-                          action,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                          ),
-                        ),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '${user?['username'] ?? 'System'}  •  $role',
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                            Text(
-                              'Table: $table'
-                              '${e['recordid'] != null ? '  •  ID: ${(e['recordid'] as String).substring(0, 8)}…' : ''}',
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: Colors.grey,
-                              ),
-                            ),
-                          ],
-                        ),
-                        trailing: Text(
-                          ts,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey,
-                          ),
-                        ),
-                        isThreeLine: true,
-                        onTap: () => _showDetail(context, e),
-                      ),
-                    );
-                  },
-                );
-              },
+          // ── Log table ────────────────────────────────────────────────────
+          logAsync.when(
+            loading: () => const Padding(
+              padding: EdgeInsets.symmetric(vertical: 48),
+              child: LoadingState(message: 'Loading audit log…'),
             ),
+            error: (e, _) => ErrorState(
+              error: e,
+              onRetry: () => ref.invalidate(_auditLogProvider),
+            ),
+            data: (entries) {
+              if (entries.isEmpty) {
+                return const UiCard(
+                  child: UiEmptyState(
+                    icon: Icons.history_rounded,
+                    title: 'No audit log entries match the current filters',
+                  ),
+                );
+              }
+              final pages = (entries.length / _pageSize).ceil();
+              final page = _page.clamp(0, pages - 1);
+              final visible = PagerBar.slice(entries, page, _pageSize);
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  DataTableCard(
+                    columns: const [
+                      UiColumn('Action', flex: 16),
+                      UiColumn('Actor', flex: 12),
+                      UiColumn('Table', flex: 12, hideOnPhone: true),
+                      UiColumn('Time', flex: 12, hideOnPhone: true),
+                    ],
+                    rows: [
+                      for (final e in visible)
+                        UiTableRow([
+                          _actionCell(e['action'] as String),
+                          _actorCell(e),
+                          UiCellText(e['tablename'] as String),
+                          UiCellText(_fmtTs(e['createdat'] as String)),
+                        ], onTap: () => _showDetail(context, e)),
+                    ],
+                  ),
+                  PagerBar(
+                    total: entries.length,
+                    page: page,
+                    pageSize: _pageSize,
+                    onPage: (p) => setState(() => _page = p),
+                  ),
+                ],
+              );
+            },
           ),
         ],
       ),
     );
+  }
+
+  Widget _actionCell(String action) {
+    return Row(
+      children: [
+        Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: _actionTone(action).background,
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: Icon(
+            _actionIcon(action),
+            size: 16,
+            color: _actionTone(action).foreground,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(child: UiCellText(action, bold: true)),
+      ],
+    );
+  }
+
+  Widget _actorCell(Map<String, dynamic> e) {
+    final user = e['systemuser'] as Map?;
+    final role = e['actorrole'] as String? ?? '—';
+    return PersonCell('${user?['username'] ?? 'System'}', subtitle: role);
   }
 
   void _showDetail(BuildContext context, Map<String, dynamic> e) {
@@ -386,57 +377,39 @@ class _AuditLogPageState extends ConsumerState<AuditLogPage> {
                 height: 4,
                 margin: const EdgeInsets.only(bottom: 16),
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
+                  color: AppColors.border,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
             ),
             Text(
               e['action'] as String,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+                color: AppColors.textPrimary,
+              ),
             ),
             const SizedBox(height: 12),
-            _DetailRow('Table', e['tablename'] as String),
-            _DetailRow('Record ID', e['recordid'] as String? ?? '—'),
-            _DetailRow('Actor Role', e['actorrole'] as String? ?? '—'),
-            _DetailRow('Reason', e['reason'] as String? ?? '—'),
-            _DetailRow('Timestamp', _fmtTs(e['createdat'] as String)),
+            DetailLine('Table', e['tablename'] as String),
+            DetailLine('Record ID', e['recordid'] as String? ?? '—'),
+            DetailLine('Actor role', e['actorrole'] as String? ?? '—'),
+            DetailLine('Reason', e['reason'] as String? ?? '—'),
+            DetailLine('Timestamp', _fmtTs(e['createdat'] as String)),
             if (e['previousvalue'] != null) ...[
-              const SizedBox(height: 8),
-              const Text(
-                'Before:',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              Container(
-                margin: const EdgeInsets.only(top: 4),
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.red.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  e['previousvalue'].toString(),
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-                ),
+              const SizedBox(height: 12),
+              const FieldLabel('Before'),
+              _ValueBox(
+                text: e['previousvalue'].toString(),
+                tone: StatusTone.danger,
               ),
             ],
             if (e['newvalue'] != null) ...[
-              const SizedBox(height: 8),
-              const Text(
-                'After:',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              Container(
-                margin: const EdgeInsets.only(top: 4),
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.green.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  e['newvalue'].toString(),
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-                ),
+              const SizedBox(height: 12),
+              const FieldLabel('After'),
+              _ValueBox(
+                text: e['newvalue'].toString(),
+                tone: StatusTone.success,
               ),
             ],
             const SizedBox(height: 24),
@@ -446,76 +419,65 @@ class _AuditLogPageState extends ConsumerState<AuditLogPage> {
     );
   }
 
-  String _fmt(DateTime d) =>
-      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
-
   String _fmtTs(String iso) {
     final d = DateTime.parse(iso).toLocal();
-    return '${d.day}/${d.month}/${d.year} '
+    return '${formatUiDate(d)} '
         '${d.hour.toString().padLeft(2, '0')}:'
         '${d.minute.toString().padLeft(2, '0')}';
   }
 
-  Color _actionColor(String action) {
+  StatusTone _actionTone(String action) {
     if (action.contains('DELETE') || action.contains('DEACTIVAT')) {
-      return Colors.red;
+      return StatusTone.danger;
     }
     if (action.contains('CREATE') ||
         action.contains('ENROL') ||
         action.contains('ADD')) {
-      return Colors.green;
+      return StatusTone.success;
     }
     if (action.contains('UPDATE') ||
         action.contains('EDIT') ||
         action.contains('RESET') ||
         action.contains('CHANGE')) {
-      return Colors.orange;
+      return StatusTone.warning;
     }
-    if (action.contains('LOGIN') || action.contains('AUTH')) {
-      return Colors.blue;
-    }
-    return Colors.blueGrey;
+    return StatusTone.info;
   }
 
   IconData _actionIcon(String action) {
     if (action.contains('DELETE') || action.contains('DEACTIVAT')) {
-      return Icons.delete;
+      return Icons.delete_outline;
     }
     if (action.contains('CREATE') || action.contains('ENROL')) {
-      return Icons.add_circle;
+      return Icons.add_circle_outline;
     }
     if (action.contains('UPDATE') || action.contains('EDIT')) {
-      return Icons.edit;
+      return Icons.edit_outlined;
     }
     if (action.contains('LOGIN')) return Icons.login;
-    if (action.contains('PAYMENT')) return Icons.payments;
-    if (action.contains('PERMISSION')) return Icons.admin_panel_settings;
+    if (action.contains('PAYMENT')) return Icons.payments_outlined;
+    if (action.contains('PERMISSION')) return Icons.admin_panel_settings_outlined;
     return Icons.history;
   }
 }
 
 // ── Small shared widgets ──────────────────────────────────────────────────────
 
-class _DetailRow extends StatelessWidget {
-  final String label;
-  final String value;
-  const _DetailRow(this.label, this.value);
+class _ValueBox extends StatelessWidget {
+  final String text;
+  final StatusTone tone;
+  const _ValueBox({required this.text, required this.tone});
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 6),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 100,
-          child: Text(
-            label,
-            style: const TextStyle(fontWeight: FontWeight.w600),
-          ),
-        ),
-        Expanded(child: Text(value)),
-      ],
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(10),
+    decoration: BoxDecoration(
+      color: tone.background,
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: SelectableText(
+      text,
+      style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
     ),
   );
 }
@@ -531,7 +493,8 @@ class _DateButton extends StatelessWidget {
     icon: const Icon(Icons.calendar_today, size: 16),
     label: Text(label, overflow: TextOverflow.ellipsis),
     style: OutlinedButton.styleFrom(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      minimumSize: const Size.fromHeight(44),
+      alignment: Alignment.centerLeft,
     ),
   );
 }
@@ -542,14 +505,11 @@ class _FilterChip extends StatelessWidget {
   const _FilterChip({required this.label, required this.onRemove});
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(right: 6),
-    child: Chip(
-      label: Text(label, style: const TextStyle(fontSize: 11)),
-      deleteIcon: const Icon(Icons.close, size: 14),
-      onDeleted: onRemove,
-      padding: EdgeInsets.zero,
-      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-    ),
+  Widget build(BuildContext context) => Chip(
+    label: Text(label, style: const TextStyle(fontSize: 11)),
+    deleteIcon: const Icon(Icons.close, size: 14),
+    onDeleted: onRemove,
+    padding: EdgeInsets.zero,
+    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
   );
 }

@@ -25,3 +25,23 @@ Supabase provides `SUPABASE_URL` and its publishable/secret runtime keys to
 deployed functions. Do not create or expose `SUPABASE_SERVICE_ROLE_KEY` in the
 Flutter client. The email function may need its own provider-specific secrets;
 see its `README.md` before deploying it.
+
+## Email setup (notifications and new-user passwords)
+
+`send-notification-email`, `create-user` and `reset-user-password` send mail
+through SMTP. Set these secrets once (Dashboard > Edge Functions > Secrets, or
+`supabase secrets set`):
+
+| Secret | Value |
+| --- | --- |
+| `SMTP_USERNAME` | the sending address, e.g. your Gmail address |
+| `SMTP_PASSWORD` | a Gmail **App Password** (not your normal password) |
+| `SMTP_FROM` | optional, defaults to `SMTP_USERNAME` |
+| `SMTP_HOST` / `SMTP_PORT` | optional, default `smtp.gmail.com` / `465` |
+| `CRON_SECRET` | optional, only if you schedule the queue (below) |
+
+Automatic notifications (e.g. year-end outcomes) are queued as `PENDING` by the
+database. To deliver them without a user action, schedule a call to
+`send-notification-email` every 5 minutes with the header `x-cron-secret` and
+the body `{"processPending": true}` (Dashboard > Integrations > Cron).
+Every attempt is recorded in `email_delivery_log` (Super User can read it).

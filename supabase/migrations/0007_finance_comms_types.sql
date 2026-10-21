@@ -13,7 +13,6 @@ DO $$ BEGIN
   );
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
-
 -- Email delivery status
 DO $$ BEGIN
   CREATE TYPE public.email_status_enum AS ENUM (
@@ -24,7 +23,6 @@ DO $$ BEGIN
   );
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
-
 -- Notification read status
 DO $$ BEGIN
   CREATE TYPE public.read_status_enum AS ENUM (

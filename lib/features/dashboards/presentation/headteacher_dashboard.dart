@@ -1,124 +1,145 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-import '../../../core/widgets/app_widgets.dart';
+
 import '../../../widgets/app_shell.dart';
-import '../../authentication/presentation/providers/auth_provider.dart';
+import 'dashboard_charts.dart';
 import 'dashboard_scaffold.dart';
 
+/// Screen 4 - Head Teacher dashboard.
 class HeadTeacherDashboard extends ConsumerWidget {
   const HeadTeacherDashboard({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    ref.watch(authProvider);
     return AppShell(
       homeRoute: '/headteacher/home',
-      body: DashboardBody(
-        subtitle: 'Oversee academics, reviews, grades and school performance',
-        roleIcon: Icons.supervisor_account,
-        roleColor: AppColors.roleHeadTeacher,
-        children: [
-          DashGrid(
-            sectionTitle: 'Reviews & Decisions',
-            sectionIcon: Icons.rate_review,
-            tiles: [
-              _T(
-                'Progression Reviews',
-                Icons.trending_up,
-                AppColors.success,
-                () => context.go('/progression/reviews'),
-              ),
-              _T(
-                'Student Status Reviews',
-                Icons.filter_alt,
-                AppColors.error,
-                () => context.go('/weeding/reviews'),
-              ),
-            ],
+      body: RoleDashboard(
+        kicker: '',
+        title: 'Head Teacher Dashboard',
+        subtitle: '',
+        charts: headTeacherCharts(),
+        quickStart: const [
+          DashboardLink(
+            'Review Results',
+            Icons.assignment_turned_in_outlined,
+            '/results/review',
+            detail: 'Approve submitted result sheets',
           ),
-          DashGrid(
-            sectionTitle: 'Academic Oversight',
-            sectionIcon: Icons.school,
-            tiles: [
-              _T(
-                'Assessments',
-                Icons.quiz,
-                AppColors.primary,
-                () => context.go('/assessments'),
-              ),
-              _T(
-                'Class Assignments',
-                Icons.assignment_ind,
-                AppColors.roleAdmin,
-                () => context.go('/academics/assignments'),
-              ),
-              _T(
-                'Students',
-                Icons.groups,
-                AppColors.roleHeadTeacher,
-                () => context.go('/students'),
-              ),
-              _T(
-                'Classes',
-                Icons.class_,
-                AppColors.secondary,
-                () => context.go('/academics/classes'),
-              ),
-            ],
+          DashboardLink(
+            'Correction Requests',
+            Icons.edit_note_outlined,
+            '/results/corrections',
+            detail: 'Decide on requested mark changes',
           ),
-          DashGrid(
-            sectionTitle: 'People',
-            sectionIcon: Icons.people_outline,
-            tiles: [
-              _T(
-                'Staff List',
-                Icons.badge,
-                AppColors.roleTeacher,
-                () => context.go('/users/staff'),
-              ),
-              _T(
-                'Guardians',
-                Icons.family_restroom,
-                AppColors.roleGuardian,
-                () => context.go('/users/guardians'),
-              ),
-            ],
+          DashboardLink(
+            'Progression Review',
+            Icons.trending_up_outlined,
+            '/progression/reviews',
+            detail: 'Promote or retain with a reason',
           ),
-          DashGrid(
-            sectionTitle: 'Communications & Reports',
-            sectionIcon: Icons.campaign,
-            tiles: [
-              _T(
-                'Notifications',
-                Icons.notifications,
-                AppColors.roleHeadTeacher,
-                () => context.go('/notifications'),
-              ),
-              _T(
-                'Teacher Comments',
-                Icons.comment,
-                AppColors.roleTeacher,
-                () => context.go('/teacher/comments'),
-              ),
-              _T(
-                'Reports',
-                Icons.analytics,
-                AppColors.roleAdmin,
-                () => context.go('/reports'),
-              ),
-              _T(
-                'Calendar',
-                Icons.calendar_month,
-                AppColors.accent,
-                () => context.go('/calendar'),
-              ),
-            ],
+        ],
+        queueRole: 'HEAD_TEACHER',
+        metrics: [
+          DashboardMetric.table(
+            icon: Icons.school_outlined,
+            label: 'Students',
+            table: 'student',
+            note: 'Registered learners',
+            route: '/students',
           ),
+          DashboardMetric.table(
+            icon: Icons.class_outlined,
+            label: 'Classes',
+            table: 'class',
+            note: 'Across all forms',
+            route: '/academics/class-setup',
+          ),
+          DashboardMetric.table(
+            icon: Icons.edit_note_outlined,
+            label: 'Correction requests',
+            table: 'result_correction_requests',
+            note: 'Requests on record',
+            route: '/results/corrections',
+          ),
+          DashboardMetric.table(
+            icon: Icons.trending_up_outlined,
+            label: 'Progression reviews',
+            table: 'progressionreview',
+            note: 'Reviews on record',
+            route: '/progression/reviews',
+          ),
+        ],
+        queueTitle: 'Academic approval queue',
+        queueNote: 'Needs your decision',
+        queue: const [
+          DashboardLink(
+            'Assessments and results',
+            Icons.assignment_turned_in_outlined,
+            '/results/review',
+            detail: 'Review submitted academic records',
+          ),
+          DashboardLink(
+            'Progression decisions',
+            Icons.trending_up_outlined,
+            '/progression/reviews',
+            detail: 'Promote or retain with an audited reason',
+          ),
+          DashboardLink(
+            'Student status reviews',
+            Icons.manage_search_outlined,
+            '/weeding/reviews',
+            detail: 'Review weeding and intervention cases',
+          ),
+        ],
+        groups: const [
+          DashboardGroup('Reviews & decisions', [
+            DashboardLink(
+              'Progression Reviews',
+              Icons.trending_up_outlined,
+              '/progression/reviews',
+            ),
+            DashboardLink(
+              'Student Status Reviews',
+              Icons.filter_alt_outlined,
+              '/weeding/reviews',
+            ),
+          ]),
+          DashboardGroup('Academic oversight', [
+            DashboardLink(
+              'Results Review',
+              Icons.quiz_outlined,
+              '/results/review',
+            ),
+            DashboardLink(
+              'Class Setup',
+              Icons.account_tree_outlined,
+              '/academics/class-setup',
+            ),
+            DashboardLink('Students', Icons.groups_outlined, '/students'),
+          ]),
+          DashboardGroup('People', [
+            DashboardLink('Staff List', Icons.badge_outlined, '/users/staff'),
+            DashboardLink(
+              'Guardians',
+              Icons.family_restroom_outlined,
+              '/users/guardians',
+            ),
+          ]),
+          DashboardGroup('Communications & reports', [
+            DashboardLink(
+              'Teacher Comments',
+              Icons.comment_outlined,
+              '/teacher/comments',
+            ),
+            DashboardLink('Reports', Icons.analytics_outlined, '/reports'),
+            DashboardLink(
+              'Calendar',
+              Icons.calendar_month_outlined,
+              '/calendar',
+            ),
+          ]),
         ],
       ),
     );
   }
 }
-
-typedef _T = TileData;

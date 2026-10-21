@@ -4,7 +4,6 @@
 
 ALTER TABLE public.academicyear
   ADD COLUMN IF NOT EXISTS form text;
-
 DO $$
 BEGIN
   ALTER TABLE public.academicyear
@@ -13,15 +12,11 @@ BEGIN
 EXCEPTION
   WHEN duplicate_object THEN NULL;
 END $$;
-
 ALTER TABLE public.academicyear
   DROP CONSTRAINT IF EXISTS academicyear_academicyear_term_key;
-
 CREATE UNIQUE INDEX IF NOT EXISTS uq_academicyear_year_term_form
   ON public.academicyear (academicyear, term, form)
   WHERE form IS NOT NULL;
-
 CREATE INDEX IF NOT EXISTS ix_academicyear_active_form_dates
   ON public.academicyear (form, startdate, enddate);
-
 NOTIFY pgrst, 'reload schema';

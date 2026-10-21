@@ -36,7 +36,6 @@ BEGIN
     ALTER TABLE public.class RENAME COLUMN formlevel TO form;
   END IF;
 END $$;
-
 -- Drop the old UNIQUE constraint on classname and add one on classroomname
 -- (only if it doesn't already exist under the new name)
 DO $$
@@ -49,7 +48,6 @@ BEGIN
     ALTER TABLE public.class ADD CONSTRAINT class_classroomname_key UNIQUE (classroomname);
   END IF;
 END $$;
-
 -- ─────────────────────────────────────────────
 -- 2. auditlog table — rename usertype → actorrole
 -- ─────────────────────────────────────────────

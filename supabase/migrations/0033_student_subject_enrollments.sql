@@ -1,5 +1,4 @@
 BEGIN;
-
 CREATE TABLE IF NOT EXISTS public.studentsubject (
   studentsubjectid uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   studentid uuid NOT NULL REFERENCES public.student(studentid) ON DELETE CASCADE,
@@ -7,16 +6,13 @@ CREATE TABLE IF NOT EXISTS public.studentsubject (
   createdat timestamptz NOT NULL DEFAULT now(),
   UNIQUE (studentid, classsubjectid)
 );
-
 CREATE INDEX IF NOT EXISTS idx_studentsubject_studentid
   ON public.studentsubject(studentid);
 CREATE INDEX IF NOT EXISTS idx_studentsubject_classsubjectid
   ON public.studentsubject(classsubjectid);
-
 ALTER TABLE public.studentsubject ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "admins manage student subjects" ON public.studentsubject;
 DROP POLICY IF EXISTS "teachers read assigned student subjects" ON public.studentsubject;
-
 CREATE POLICY "admins manage student subjects"
 ON public.studentsubject FOR ALL TO authenticated
 USING ((SELECT public.current_app_role()) IN (
@@ -25,7 +21,6 @@ USING ((SELECT public.current_app_role()) IN (
 WITH CHECK ((SELECT public.current_app_role()) IN (
   'SUPER_USER', 'SYSTEM_ADMIN', 'ADMINISTRATOR', 'ADMIN', 'HEAD_TEACHER'
 ));
-
 CREATE POLICY "teachers read assigned student subjects"
 ON public.studentsubject FOR SELECT TO authenticated
 USING (
@@ -37,6 +32,5 @@ USING (
       AND staff_member.userid = (SELECT auth.uid())
   )
 );
-
 NOTIFY pgrst, 'reload schema';
 COMMIT;

@@ -5,7 +5,10 @@ import '../../../users/data/repositories/user_repository.dart';
 import '../../../../core/services/audit_service.dart';
 import '../../../authentication/presentation/providers/auth_provider.dart';
 import '../../../../widgets/can.dart';
-import '../../../../widgets/skeleton_loader.dart';
+import '../../../../core/widgets/app_widgets.dart'
+    show ErrorState, LoadingState;
+import '../../../../theme/app_tokens.dart';
+import '../../../../widgets/ui_kit.dart';
 
 final _userDetailsProvider =
     FutureProvider.family<Map<String, dynamic>, String>((ref, userId) async {
@@ -311,59 +314,93 @@ class _UserDetailsPageState extends ConsumerState<UserDetailsPage> {
   Widget build(BuildContext context) {
     final async = ref.watch(_userDetailsProvider(widget.userId));
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('User Details'),
-        actions: [
-          if (_loading)
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            ),
+    return async.when(
+      loading: () => const UiPage(
+        children: [
+          PageHead(kicker: 'Administration', title: 'User Details'),
+          Padding(
+            padding: EdgeInsets.symmetric(vertical: 48),
+            child: LoadingState(message: 'Loading user…'),
+          ),
         ],
       ),
-      body: async.when(
-        loading: () => const SkeletonListLoader(itemCount: 4, itemHeight: 110),
-        error: (e, _) => Center(child: Text('Error: $e')),
-        data: (user) {
-          final role = user['role'] as Map<String, dynamic>?;
-          final staff = user['staff'] as Map<String, dynamic>?;
-          final guardian = user['guardian'] as Map<String, dynamic>?;
-          final isActive = _optimisticIsActive ?? user['isactive'] as bool;
-          final mustChange = user['mustchangepassword'] as bool;
+      error: (e, _) => UiPage(
+        children: [
+          const PageHead(kicker: 'Administration', title: 'User Details'),
+          ErrorState(
+            error: e,
+            onRetry: () => ref.invalidate(_userDetailsProvider(widget.userId)),
+          ),
+        ],
+      ),
+      data: (user) {
+        final role = user['role'] as Map<String, dynamic>?;
+        final staff = user['staff'] as Map<String, dynamic>?;
+        final guardian = user['guardian'] as Map<String, dynamic>?;
+        final isActive = _optimisticIsActive ?? user['isactive'] as bool;
+        final mustChange = user['mustchangepassword'] as bool;
+        final profile = staff ?? guardian;
+        final displayName = profile == null
+            ? '${user['username']}'
+            : '${profile['firstname']} ${profile['lastname']}';
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Status Badge
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isActive
-                        ? Colors.green.withValues(alpha: 0.1)
-                        : Colors.red.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Text(
-                    isActive ? 'ACTIVE' : 'INACTIVE',
-                    style: TextStyle(
-                      color: isActive ? Colors.green : Colors.red,
-                      fontWeight: FontWeight.bold,
+        return UiPage(
+          children: [
+            PageHead(
+              kicker: 'Administration',
+              title: 'User Details',
+              subtitle: 'Account, profile and role for this user.',
+              actions: [
+                if (_loading)
+                  const Padding(
+                    padding: EdgeInsets.all(8),
+                    child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
                     ),
                   ),
+                // FIX 4: Change Role button
+                Can(
+                  permission: 'permissions:manage',
+                  child: UiButton.secondary(
+                    'Change Role',
+                    icon: Icons.swap_horiz,
+                    onPressed: _loading ? null : () => _changeRole(user),
+                  ),
                 ),
-                const SizedBox(height: 16),
-
-                // Basic Info Card
+                Can(
+                  permission: 'users:deactivate',
+                  child: UiButton.secondary(
+                    isActive ? 'Deactivate User' : 'Reactivate User',
+                    icon: isActive ? Icons.block : Icons.check_circle,
+                    onPressed: _loading ? null : () => _toggleUserStatus(user),
+                  ),
+                ),
+                Can(
+                  permission: 'users:reset_password',
+                  child: UiButton.secondary(
+                    'Reset Password',
+                    icon: Icons.lock_reset,
+                    onPressed: _loading ? null : _resetPassword,
+                  ),
+                ),
+              ],
+            ),
+            ProfileHero(
+              name: displayName,
+              subtitle: '${user['username']} • ${role?['rolename'] ?? 'No Role'}',
+              pill: StatusPill(
+                isActive ? 'Active' : 'Inactive',
+                tone: isActive ? StatusTone.success : StatusTone.danger,
+              ),
+            ),
+            const SizedBox(height: 14),
+            AdaptiveGrid(
+              columns: 2,
+              mediumColumns: 2,
+              gap: 14,
+              children: [
                 _infoCard('Account Information', [
                   _infoRow('Username', user['username']),
                   _infoRow('Role', role?['rolename'] ?? 'No Role'),
@@ -372,16 +409,13 @@ class _UserDetailsPageState extends ConsumerState<UserDetailsPage> {
                   if (user['updatedat'] != null)
                     _infoRow('Updated', _formatDate(user['updatedat'])),
                 ]),
-
-                // Profile Info Card
-                if (staff != null || guardian != null) ...[
-                  const SizedBox(height: 16),
+                if (profile != null)
                   _infoCard(
                     staff != null ? 'Staff Profile' : 'Guardian Profile',
                     [
-                      _infoRow('First Name', (staff ?? guardian)!['firstname']),
-                      _infoRow('Last Name', (staff ?? guardian)!['lastname']),
-                      _infoRow('Email', (staff ?? guardian)!['email']),
+                      _infoRow('First Name', profile['firstname']),
+                      _infoRow('Last Name', profile['lastname']),
+                      _infoRow('Email', profile['email']),
                       if (staff != null)
                         _infoRow('Employee Number', staff['employeenumber']),
                       if (guardian != null) ...[
@@ -392,140 +426,66 @@ class _UserDetailsPageState extends ConsumerState<UserDetailsPage> {
                       ],
                     ],
                   ),
-                ],
-
-                // Role Details Card
-                if (role != null) ...[
-                  const SizedBox(height: 16),
+                if (role != null)
                   _infoCard('Role Details', [
                     _infoRow('Role Name', role['rolename']),
                     if (role['description'] != null)
                       _infoRow('Description', role['description']),
                   ]),
-                ],
-
-                const SizedBox(height: 24),
-
-                // Action Buttons
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // FIX 4: Change Role button
-                    Can(
-                      permission: 'permissions:manage',
-                      child: ElevatedButton.icon(
-                        onPressed: _loading ? null : () => _changeRole(user),
-                        icon: const Icon(Icons.swap_horiz),
-                        label: const Text('Change Role'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.orange,
+                // ── Permissions management ────────────────────
+                Panel(
+                  title: 'Role Permissions',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'Grant or revoke individual permissions for the '
+                        '"${role?['rolename'] ?? 'assigned'}" role. '
+                        'Changes apply to ALL users with this role.',
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textSecondary,
+                          height: 1.45,
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Can(
-                      permission: 'users:deactivate',
-                      child: ElevatedButton.icon(
-                        onPressed: _loading
-                            ? null
-                            : () => _toggleUserStatus(user),
-                        icon: Icon(isActive ? Icons.block : Icons.check_circle),
-                        label: Text(
-                          isActive ? 'Deactivate User' : 'Reactivate User',
+                      const SizedBox(height: 12),
+                      Can(
+                        permission: 'permissions:manage',
+                        child: UiButton(
+                          'Manage Role Permissions',
+                          icon: Icons.admin_panel_settings,
+                          onPressed: role == null
+                              ? null
+                              : () => context.go(
+                                  '/admin/roles/${role['roleid']}/permissions?roleName=${Uri.encodeComponent(role['rolename'] as String)}',
+                                ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Can(
-                      permission: 'users:reset_password',
-                      child: OutlinedButton.icon(
-                        onPressed: _loading ? null : _resetPassword,
-                        icon: const Icon(Icons.lock_reset),
-                        label: const Text('Reset Password'),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-
-                    // ── Permissions management ────────────────────
-                    const Divider(height: 24),
-                    const Text(
-                      'Role Permissions',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Grant or revoke individual permissions for the '
-                      '"${role?['rolename'] ?? 'assigned'}" role. '
-                      'Changes apply to ALL users with this role.',
-                      style: const TextStyle(color: Colors.grey, fontSize: 12),
-                    ),
-                    const SizedBox(height: 10),
-                    Can(
-                      permission: 'permissions:manage',
-                      child: FilledButton.icon(
-                        onPressed: role == null
-                            ? null
-                            : () => context.go(
-                                '/admin/roles/${role['roleid']}/permissions?roleName=${Uri.encodeComponent(role['rolename'] as String)}',
-                              ),
-                        icon: const Icon(Icons.admin_panel_settings),
-                        label: const Text('Manage Role Permissions'),
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ],
             ),
-          );
-        },
-      ),
+          ],
+        );
+      },
     );
   }
 
   Widget _infoCard(String title, List<Widget> children) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            ...children,
-          ],
-        ),
-      ),
+    return Panel(
+      title: title,
+      child: Column(children: children),
     );
   }
 
-  Widget _infoRow(String label, String? value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 120,
-            child: Text(
-              label,
-              style: const TextStyle(fontWeight: FontWeight.w500),
-            ),
-          ),
-          Expanded(child: Text(value ?? 'Not set')),
-        ],
-      ),
-    );
-  }
+  Widget _infoRow(String label, String? value) =>
+      DetailLine(label, value ?? 'Not set');
 
   String _formatDate(String? isoDate) {
     if (isoDate == null) return 'Unknown';
     final date = DateTime.parse(isoDate);
-    return '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
+    return '${formatUiDate(date)} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
   }
 }

@@ -1,5 +1,6 @@
 import '../../../../core/database/supabase_client.dart';
 import '../../../../core/errors/app_exception.dart';
+import '../../../../core/errors/rpc_error.dart';
 import '../../domain/models/staff.dart';
 import '../../domain/models/guardian.dart';
 import 'package:supabase_flutter/supabase_flutter.dart'
@@ -54,7 +55,7 @@ class UserRepository {
       final rows = await supabase
           .from('staff')
           .select(
-            'staffid, userid, employeenumber, firstname, middlename, lastname, gender, email',
+            'staffid, userid, employeenumber, firstname, middlename, lastname, gender, email, dateofbirth, nationalid, phonenumber, alternativephone, physicaladdress, profilepicturepath, jobtitle, department, employmenttype, employmentstatus, employmentstartdate, professionalqualifications, highestacademicqualification, yearsofexperience, emergencycontactname, emergencycontactphone, emergencycontactrelationship',
           )
           .order('lastname')
           .range(offset, offset + kUserPageSize - 1);
@@ -70,7 +71,7 @@ class UserRepository {
       final row = await supabase
           .from('staff')
           .select(
-            'staffid, userid, employeenumber, firstname, middlename, lastname, gender, email',
+            'staffid, userid, employeenumber, firstname, middlename, lastname, gender, email, dateofbirth, nationalid, phonenumber, alternativephone, physicaladdress, profilepicturepath, jobtitle, department, employmenttype, employmentstatus, employmentstartdate, professionalqualifications, highestacademicqualification, yearsofexperience, emergencycontactname, emergencycontactphone, emergencycontactrelationship',
           )
           .eq('staffid', staffId)
           .single();
@@ -307,6 +308,86 @@ class UserRepository {
     }
   }
 
+  /// Grants [roleId] as a secondary (non-primary) role in `user_roles`.
+  ///
+  /// Only the Teacher + Head Teacher pair is accepted by the database trigger
+  /// `validate_user_role_pair`, and `user_roles_manage` RLS limits writes to
+  /// Super Users and Administrators.
+  Future<void> addSecondaryRole({
+    required String userId,
+    required String roleId,
+  }) async {
+    try {
+      await supabase.from('user_roles').insert({
+        'user_id': userId,
+        'role_id': roleId,
+        'is_primary': false,
+      });
+    } catch (e) {
+      if (e.toString().contains('dual-role')) {
+        throw ServerException(
+          'Only the Teacher and Head Teacher dual-role combination is permitted.',
+        );
+      }
+      throw _mapException(e);
+    }
+  }
+
+  /// The `staff.staffid` for an auth user, or null when no staff row exists.
+  Future<String?> staffIdForUser(String userId) async {
+    try {
+      final row = await supabase
+          .from('staff')
+          .select('staffid')
+          .eq('userid', userId)
+          .maybeSingle();
+      return row?['staffid'] as String?;
+    } catch (e) {
+      throw _mapException(e);
+    }
+  }
+
+  /// Every subject in the catalogue, for the "subjects they teach" picker.
+  Future<List<Map<String, dynamic>>> subjectOptions() async {
+    try {
+      final rows = await supabase
+          .from('subject')
+          .select('subjectid, subjectname')
+          .order('subjectname');
+      return List<Map<String, dynamic>>.from(rows as List);
+    } catch (e) {
+      throw _mapException(e);
+    }
+  }
+
+  /// The subject ids a staff member is marked as teaching.
+  Future<Set<String>> staffSubjectIds(String staffId) async {
+    try {
+      final rows = await supabase
+          .from('staff_subjects')
+          .select('subject_id')
+          .eq('staff_id', staffId);
+      return {
+        for (final row in rows as List) (row as Map)['subject_id'] as String,
+      };
+    } catch (e) {
+      throw _mapException(e);
+    }
+  }
+
+  /// Replaces the subjects a staff member is marked as teaching. The database
+  /// refuses to un-mark a subject the teacher currently teaches in a class.
+  Future<void> setStaffSubjects(String staffId, Set<String> subjectIds) async {
+    try {
+      await supabase.rpc(
+        'set_staff_subjects',
+        params: {'p_staff_id': staffId, 'p_subject_ids': subjectIds.toList()},
+      );
+    } catch (e) {
+      throw ServerException(rpcErrorMessage(e));
+    }
+  }
+
   /// Lists all system users with their role and staff/guardian details.
   /// Returns a list of combined records (systemuser + role + staff/guardian data).
   Future<List<Map<String, dynamic>>> listAllSystemUsers() async {
@@ -314,7 +395,7 @@ class UserRepository {
       final systemUsers = await supabase
           .from('systemuser')
           .select(
-            'userid, username, role(rolename), mustchangepassword, isactive, createdat',
+            'userid, username, role:role!fk_systemuser_role(rolename), mustchangepassword, isactive, createdat',
           )
           .order('createdat', ascending: false);
 
@@ -377,7 +458,7 @@ class UserRepository {
           .from('systemuser')
           .select('''
             userid, username, mustchangepassword, isactive, createdat, updatedat,
-            role(roleid, rolename, description),
+            role:role!fk_systemuser_role(roleid, rolename, description),
             staff(staffid, firstname, lastname, email, employeenumber, gender),
             guardian(guardianid, firstname, lastname, email, phonenumber, gender)
           ''')

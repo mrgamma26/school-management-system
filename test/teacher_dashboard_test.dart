@@ -53,6 +53,9 @@ void main() {
 
     expect(find.text('Add Assessment'), findsOneWidget);
 
+    // The dashboard scrolls; bring the shortcut into view before tapping.
+    await tester.ensureVisible(find.text('Add Assessment'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Add Assessment'));
     await tester.pumpAndSettle();
 

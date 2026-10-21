@@ -17,6 +17,7 @@ void main() {
       expect(year.form, 'FORM_2');
     }
   });
+
   test(
     'numeric and string year values use the same consecutive-year label',
     () {
@@ -26,9 +27,25 @@ void main() {
     },
   );
 
-  test('form codes have readable labels and legacy rows are explicit', () {
+  test('form and term codes have readable labels', () {
     expect(formatFormLevel('FORM_1'), 'Form 1');
     expect(formatFormLevel('FORM_4'), 'Form 4');
     expect(formatFormLevel(null), 'Form not configured');
+    expect(formatAcademicTerm('TERM_1'), 'Term 1');
+    expect(formatAcademicTerm('TERM_3'), 'Term 3');
+    expect(formatAcademicTerm(null), 'Term not configured');
+  });
+
+  test('selection label distinguishes year, term and form', () {
+    final period = AcademicYear(
+      id: 'period',
+      year: 2026,
+      term: 'TERM_2',
+      form: 'FORM_3',
+      startDate: DateTime(2027, 1),
+      endDate: DateTime(2027, 4),
+    );
+
+    expect(period.selectionLabel, '2026/2027 · Term 2 · Form 3');
   });
 }

@@ -18,6 +18,10 @@ class AcademicYear {
 
   String get label => formatAcademicYear(year);
 
+  /// Uniquely identifies a legacy period in selection controls.
+  String get selectionLabel =>
+      '$label · ${formatAcademicTerm(term)} · ${formatFormLevel(form)}';
+
   factory AcademicYear.fromJson(Map<String, dynamic> j) => AcademicYear(
     id: j['academicyearid'] as String,
     year: j['academicyear'] as int,
@@ -29,6 +33,17 @@ class AcademicYear {
 
   @override
   String toString() => 'AcademicYear($id, $label)';
+}
+
+String formatAcademicTerm(Object? term) {
+  return switch (term?.toString().toUpperCase()) {
+    'TERM_1' => 'Term 1',
+    'TERM_2' => 'Term 2',
+    'TERM_3' => 'Term 3',
+    'TERM_4' => 'Term 4',
+    final value when value != null && value.isNotEmpty => value,
+    _ => 'Term not configured',
+  };
 }
 
 String formatFormLevel(String? form) {

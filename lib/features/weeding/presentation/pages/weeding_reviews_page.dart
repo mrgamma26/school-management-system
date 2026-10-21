@@ -2,10 +2,30 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/weeding_repository.dart';
 import '../../../../core/database/supabase_client.dart';
-import '../../../../core/errors/app_exception.dart';
 import '../../../../core/auth/permission_helper.dart';
+import '../../../../core/auth/school_role_access.dart';
+import '../../../../core/errors/rpc_error.dart';
 import '../../../../core/services/audit_service.dart';
 import '../../../authentication/presentation/providers/auth_provider.dart';
+import '../../../../core/widgets/app_widgets.dart'
+    show ErrorState, LoadingState;
+import '../../../../widgets/ui_kit.dart';
+
+String _pretty(Object? value) => (value?.toString() ?? '')
+    .replaceAll('_', ' ')
+    .replaceFirstMapped(
+      RegExp(r'^[A-Z]+'),
+      (m) => m[0]![0] + m[0]!.substring(1).toLowerCase(),
+    );
+
+final _flagStudentsProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+      final rows = await supabase
+          .from('student')
+          .select('studentid, firstname, lastname')
+          .order('firstname');
+      return List<Map<String, dynamic>>.from(rows as List);
+    });
 
 // Providers
 
@@ -14,8 +34,10 @@ final _weedingYearsProvider = FutureProvider<List<Map<String, dynamic>>>((
 ) async {
   final rows = await supabase
       .from('academicyear')
-      .select('academicyearid, academicyear, term')
-      .order('academicyear', ascending: false);
+      .select('academicyearid, academicyear, term, form')
+      .order('academicyear', ascending: false)
+      .order('form')
+      .order('term');
   return List<Map<String, dynamic>>.from(rows as List);
 });
 
@@ -45,7 +67,11 @@ class _WeedingReviewsPageState extends ConsumerState<WeedingReviewsPage> {
   bool get _canDecide {
     final permHelper = ref.watch(permissionHelperProvider);
     return permHelper.maybeWhen(
-      data: (perm) => perm?.canDecideWeeding ?? false,
+      data: (perm) =>
+          perm != null &&
+          (perm.canDecideWeeding ||
+              perm.has('weeding:decide') ||
+              schoolRole(perm.roleName) == 'HEAD_TEACHER'),
       orElse: () => false,
     );
   }
@@ -54,140 +80,195 @@ class _WeedingReviewsPageState extends ConsumerState<WeedingReviewsPage> {
   Widget build(BuildContext context) {
     final yearsAsync = ref.watch(_weedingYearsProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Weeding Reviews'),
-        actions: [
-          if (_yearId != null && _canDecide)
-            TextButton.icon(
-              onPressed: () => _showFlagDialog(),
-              icon: const Icon(Icons.flag),
-              label: const Text('Flag Student'),
-            ),
-        ],
-      ),
-      body: yearsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text(friendlyError(e))),
-        data: (years) => Column(
-          children: [
-            // Year selector
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: DropdownButtonFormField<String>(
-                initialValue: _yearId,
-                decoration: const InputDecoration(
-                  labelText: 'Academic Year',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.calendar_today),
-                ),
-                hint: const Text('Select academic year'),
-                items: years.map((y) {
-                  final id = y['academicyearid'] as String;
-                  final label = '${y['academicyear']} - ${y['term']}';
-                  return DropdownMenuItem(value: id, child: Text(label));
-                }).toList(),
-                onChanged: (v) => setState(() => _yearId = v),
+    return UiPage(
+      children: [
+        PageHead(
+          kicker: 'Assessments',
+          title: 'Weeding Reviews',
+          subtitle:
+              'Student status reviews decided by the Head Teacher with a recorded reason.',
+          actions: [
+            if (_yearId != null && _canDecide)
+              UiButton(
+                'Flag Student',
+                icon: Icons.flag_outlined,
+                onPressed: () => _showFlagDialog(),
               ),
-            ),
-
-            // Filter chips
-            if (_yearId != null)
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  children: ['ALL', 'PENDING', 'WEED_OUT', 'RETAIN']
-                      .map(
-                        (f) => Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: FilterChip(
-                            label: Text(f),
-                            selected: _filter == f,
-                            onSelected: (_) => setState(() => _filter = f),
-                          ),
-                        ),
-                      )
-                      .toList(),
-                ),
-              ),
-            const SizedBox(height: 8),
-
-            // List
-            Expanded(
-              child: _yearId == null
-                  ? const Center(
-                      child: Text(
-                        'Select a year to view weeding reviews',
-                        style: TextStyle(color: Colors.grey),
-                      ),
-                    )
-                  : _WeedingList(
-                      yearId: _yearId!,
-                      filter: _filter,
-                      canDecide: _canDecide,
-                    ),
-            ),
           ],
         ),
-      ),
+        yearsAsync.when(
+          loading: () => const Padding(
+            padding: EdgeInsets.symmetric(vertical: 48),
+            child: LoadingState(message: 'Loading academic periods…'),
+          ),
+          error: (e, _) => ErrorState(
+            error: e,
+            onRetry: () => ref.invalidate(_weedingYearsProvider),
+          ),
+          data: (years) => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Year selector
+              UiCard(
+                padding: const EdgeInsets.all(12),
+                child: UiField(
+                  label: 'Academic period',
+                  child: DropdownButtonFormField<String>(
+                    initialValue: _yearId,
+                    hint: const Text('Select academic year'),
+                    items: years.map((y) {
+                      final id = y['academicyearid'] as String;
+                      final label =
+                          '${y['academicyear']}/${(y['academicyear'] as int) + 1} • '
+                          '${_pretty(y['form'])} • ${_pretty(y['term'])}';
+                      return DropdownMenuItem(value: id, child: Text(label));
+                    }).toList(),
+                    onChanged: (v) => setState(() => _yearId = v),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Filter chips
+              if (_yearId != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final f in const [
+                        'ALL',
+                        'PENDING',
+                        'WEED_OUT',
+                        'RETAIN',
+                      ])
+                        FilterChipBox(
+                          f.replaceAll('_', ' '),
+                          selected: _filter == f,
+                          onTap: () => setState(() => _filter = f),
+                        ),
+                    ],
+                  ),
+                ),
+
+              // List
+              if (_yearId == null)
+                const UiCard(
+                  child: UiEmptyState(
+                    icon: Icons.manage_search_outlined,
+                    title: 'Select an academic period',
+                    message: 'Select a year to view weeding reviews.',
+                  ),
+                )
+              else
+                _WeedingList(
+                  yearId: _yearId!,
+                  filter: _filter,
+                  canDecide: _canDecide,
+                ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
   Future<void> _showFlagDialog() async {
-    final sidCtrl = TextEditingController();
     final avgCtrl = TextEditingController();
+    String? studentId;
+    String? error;
 
-    await showDialog(
+    await showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Flag Student for Weeding'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'This will flag a student for a weeding review.',
-              style: TextStyle(color: Colors.grey),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Flag Student for Review'),
+          content: SizedBox(
+            width: 420,
+            child: Consumer(
+              builder: (ctx, ref, _) {
+                final students = ref.watch(_flagStudentsProvider);
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'Choose the student and enter their cumulative average '
+                      'for the period selected above.',
+                    ),
+                    const SizedBox(height: 12),
+                    students.when(
+                      loading: () => const LinearProgressIndicator(),
+                      error: (e, _) => Text(rpcErrorMessage(e)),
+                      data: (list) => DropdownButtonFormField<String>(
+                        decoration: const InputDecoration(
+                          labelText: 'Student *',
+                        ),
+                        items: [
+                          for (final r in list)
+                            DropdownMenuItem(
+                              value: r['studentid'] as String,
+                              child: Text('${r['firstname']} ${r['lastname']}'),
+                            ),
+                        ],
+                        onChanged: (v) => setDialogState(() => studentId = v),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: avgCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Cumulative average (0-100) *',
+                      ),
+                    ),
+                    if (error != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 10),
+                        child: Text(
+                          error!,
+                          style: const TextStyle(color: Color(0xFFB42318)),
+                        ),
+                      ),
+                  ],
+                );
+              },
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: sidCtrl,
-              decoration: const InputDecoration(labelText: 'Student ID'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: avgCtrl,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Cumulative Average (0-100)',
-              ),
+            FilledButton(
+              onPressed: () async {
+                final avg = double.tryParse(avgCtrl.text.trim()) ?? -1;
+                if (studentId == null || avg < 0 || avg > 100) {
+                  setDialogState(
+                    () => error =
+                        'Choose a student and an average from 0 to 100.',
+                  );
+                  return;
+                }
+                try {
+                  await WeedingRepository().flagStudent(
+                    studentId: studentId!,
+                    academicYearId: _yearId!,
+                    cumulativeAverage: avg,
+                  );
+                  ref.invalidate(_weedingReviewsProvider(_yearId!));
+                  if (ctx.mounted) Navigator.pop(ctx);
+                } catch (e) {
+                  setDialogState(() => error = rpcErrorMessage(e));
+                }
+              },
+              child: const Text('Flag'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () async {
-              final sid = sidCtrl.text.trim();
-              final avg = double.tryParse(avgCtrl.text.trim()) ?? -1;
-              if (sid.isEmpty || avg < 0 || avg > 100) return;
-              await WeedingRepository().flagStudent(
-                studentId: sid,
-                academicYearId: _yearId!,
-                cumulativeAverage: avg,
-              );
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
-            child: const Text('Flag'),
-          ),
-        ],
       ),
     );
-    sidCtrl.dispose();
     avgCtrl.dispose();
   }
 }
@@ -210,99 +291,83 @@ class _WeedingList extends ConsumerWidget {
     final async = ref.watch(_weedingReviewsProvider(yearId));
 
     return async.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text(friendlyError(e))),
+      loading: () => const Padding(
+        padding: EdgeInsets.symmetric(vertical: 48),
+        child: LoadingState(message: 'Loading reviews…'),
+      ),
+      error: (e, _) => ErrorState(
+        error: e,
+        onRetry: () => ref.invalidate(_weedingReviewsProvider(yearId)),
+      ),
       data: (reviews) {
         final filtered = filter == 'ALL'
             ? reviews
             : reviews.where((r) => r['decision'] == filter).toList();
 
         if (filtered.isEmpty) {
-          return Center(
-            child: Text(
-              filter == 'PENDING'
-                  ? 'No pending weeding reviews.'
-                  : 'No $filter reviews found.',
-              style: const TextStyle(color: Colors.grey),
+          return UiCard(
+            child: UiEmptyState(
+              icon: Icons.fact_check_outlined,
+              title: filter == 'PENDING'
+                  ? 'No pending weeding reviews'
+                  : 'No ${filter.replaceAll('_', ' ')} reviews found',
             ),
           );
         }
 
-        return ListView.separated(
-          padding: const EdgeInsets.all(12),
-          itemCount: filtered.length,
-          separatorBuilder: (_, _) => const SizedBox(height: 8),
-          itemBuilder: (context, i) {
-            final r = filtered[i];
-            final student = r['student'] as Map<String, dynamic>;
-            final name = '${student['firstname']} ${student['lastname']}';
-            final decision = r['decision'] as String;
-            final avg = r['cumulativeaverage'];
-            final reason = r['decisionreason'] as String?;
-            final decider = r['staff'] as Map<String, dynamic>?;
-
-            return Card(
-              child: ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: _color(decision),
-                  child: Icon(_icon(decision), color: Colors.white, size: 20),
-                ),
-                title: Text(
-                  name,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Cumulative Average: ${avg ?? '-'}'),
-                    Text('Flagged: ${r['flaggeddate'] ?? '-'}'),
-                    if (reason != null && reason.isNotEmpty)
-                      Text(
-                        'Reason: $reason',
-                        style: const TextStyle(color: Colors.red, fontSize: 12),
-                      ),
-                    if (decider != null)
-                      Text(
-                        'By: ${decider['firstname']} ${decider['lastname']}',
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                  ],
-                ),
-                isThreeLine: true,
-                trailing: decision == 'PENDING' && canDecide
-                    ? _WeedButtons(
-                        weedingId: r['weedingid'] as String,
-                        yearId: yearId,
-                        studentName: name,
-                      )
-                    : Chip(
-                        label: Text(decision),
-                        backgroundColor: _color(
-                          decision,
-                        ).withValues(alpha: 0.15),
-                        labelStyle: TextStyle(
-                          color: _color(decision),
-                          fontWeight: FontWeight.bold,
+        return DataTableCard(
+          columns: const [
+            UiColumn('Student', flex: 16),
+            UiColumn('Average', flex: 7),
+            UiColumn('Flagged', flex: 9, hideOnPhone: true),
+            UiColumn('Reason', flex: 14, hideOnPhone: true),
+            UiColumn('Decision', width: 124),
+          ],
+          rows: [
+            for (final r in filtered)
+              () {
+                final student = r['student'] as Map<String, dynamic>;
+                final name = '${student['firstname']} ${student['lastname']}';
+                final decision = r['decision'] as String;
+                final reason = r['decisionreason'] as String?;
+                final decider = r['staff'] as Map<String, dynamic>?;
+                return UiTableRow([
+                  PersonCell(
+                    name,
+                    subtitle: decider == null
+                        ? null
+                        : 'By ${decider['firstname']} ${decider['lastname']}',
+                  ),
+                  UiCellText('${r['cumulativeaverage'] ?? '—'}', bold: true),
+                  UiCellText('${r['flaggeddate'] ?? '—'}'),
+                  UiCellText(
+                    reason != null && reason.isNotEmpty ? reason : '—',
+                  ),
+                  decision == 'PENDING' && canDecide
+                      ? _WeedButtons(
+                          weedingId: r['weedingid'] as String,
+                          yearId: yearId,
+                          studentName: name,
+                        )
+                      : Align(
+                          alignment: Alignment.centerLeft,
+                          child: StatusPill(
+                            decision.replaceAll('_', ' '),
+                            tone: _tone(decision),
+                          ),
                         ),
-                      ),
-              ),
-            );
-          },
+                ]);
+              }(),
+          ],
         );
       },
     );
   }
 
-  Color _color(String d) => switch (d) {
-    'WEED_OUT' => Colors.red,
-    'RETAIN' => Colors.green,
-    _ => Colors.orange,
-  };
-
-  IconData _icon(String d) => switch (d) {
-    'WEED_OUT' => Icons.remove_circle,
-    'RETAIN' => Icons.check_circle,
-    _ => Icons.hourglass_empty,
+  StatusTone _tone(String d) => switch (d) {
+    'WEED_OUT' => StatusTone.danger,
+    'RETAIN' => StatusTone.success,
+    _ => StatusTone.warning,
   };
 }
 
@@ -368,12 +433,21 @@ class _WeedButtons extends ConsumerWidget {
         .single();
     final staffId = staffRow['staffid'] as String;
 
-    await WeedingRepository().decide(
-      weedingId: weedingId,
-      staffId: staffId,
-      decision: decision,
-      reason: reason,
-    );
+    try {
+      await WeedingRepository().decide(
+        weedingId: weedingId,
+        staffId: staffId,
+        decision: decision,
+        reason: reason,
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(rpcErrorMessage(e))));
+      }
+      return;
+    }
 
     await AuditService().log(
       userId: actor.userId,

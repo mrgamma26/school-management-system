@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../../core/services/audit_service.dart';
+import '../../../../core/widgets/app_widgets.dart'
+    show ErrorState, LoadingState;
+import '../../../../theme/app_tokens.dart';
+import '../../../../widgets/ui_kit.dart';
 import '../../../authentication/presentation/providers/auth_provider.dart';
 import '../../../users/data/repositories/user_repository.dart';
-import '../../../../widgets/skeleton_loader.dart';
 
 // ── Providers ────────────────────────────────────────────────────────────────
 
@@ -70,7 +74,7 @@ const _permissionCatalogue = <String, List<String>>{
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
-/// Full permission management screen for a single role.
+/// Screen 17 - Permissions for a single role.
 /// Reached from [UserDetailsPage] → "Manage Permissions" button.
 /// Only accessible by SUPER_USER.
 class ManagePermissionsPage extends ConsumerStatefulWidget {
@@ -216,162 +220,128 @@ class _ManagePermissionsPageState extends ConsumerState<ManagePermissionsPage> {
   Widget build(BuildContext context) {
     final async = ref.watch(_rolePermissionsProvider(widget.roleId));
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Manage Permissions'),
-            Text(
-              widget.roleName,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.normal,
-              ),
+    return UiPage(
+      children: [
+        PageHead(
+          kicker: 'Users & Access',
+          title: 'Manage Permissions',
+          subtitle: '${widget.roleName} role · protected capabilities by area.',
+          actions: [
+            UiButton(
+              _saving ? 'Saving…' : 'Save permissions',
+              icon: Icons.save_outlined,
+              onPressed: _initialised && !_saving ? _save : null,
             ),
           ],
         ),
-        actions: [
-          if (_saving)
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            )
-          else
-            TextButton.icon(
-              onPressed: _initialised ? _save : null,
-              icon: const Icon(Icons.save),
-              label: const Text('Save'),
-            ),
-        ],
-      ),
-      body: async.when(
-        loading: () => const SkeletonListLoader(itemCount: 5, itemHeight: 72),
-        error: (e, _) => Center(child: Text('Error loading permissions: $e')),
-        data: (data) {
-          _initFromData(data);
-
-          return Column(
-            children: [
-              // Dirty-state banner
-              if (_isDirty)
-                MaterialBanner(
-                  content: const Text('You have unsaved permission changes.'),
-                  backgroundColor: Colors.amber.shade50,
-                  leading: const Icon(Icons.warning_amber),
-                  actions: [
-                    TextButton(
-                      onPressed: () => setState(() {
-                        _granted = Set.of(_original);
-                      }),
-                      child: const Text('Discard'),
-                    ),
-                    TextButton(onPressed: _save, child: const Text('Save Now')),
-                  ],
-                ),
-
-              if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Text(
-                    'Error: $_error',
-                    style: const TextStyle(color: Colors.red),
-                  ),
-                ),
-
-              // Permission list
-              Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 8,
-                    horizontal: 4,
-                  ),
-                  children: _permissionCatalogue.entries.map((entry) {
-                    final domain = entry.key;
-                    final perms = entry.value;
-                    final allGranted = perms.every((p) => _granted.contains(p));
-                    final someGranted = perms.any((p) => _granted.contains(p));
-
-                    return Card(
-                      margin: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 4,
-                      ),
-                      child: ExpansionTile(
-                        leading: Icon(
-                          allGranted
-                              ? Icons.check_circle
-                              : someGranted
-                              ? Icons.indeterminate_check_box
-                              : Icons.radio_button_unchecked,
-                          color: allGranted
-                              ? Colors.green
-                              : someGranted
-                              ? Colors.orange
-                              : Colors.grey,
-                        ),
-                        title: Text(
-                          domain,
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        subtitle: Text(
-                          '${perms.where((p) => _granted.contains(p)).length}'
-                          ' / ${perms.length} granted',
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            TextButton(
-                              onPressed: () => _toggleAll(perms, true),
-                              child: const Text('All'),
-                            ),
-                            TextButton(
-                              onPressed: () => _toggleAll(perms, false),
-                              child: const Text('None'),
-                            ),
-                            const Icon(Icons.expand_more),
-                          ],
-                        ),
-                        children: perms.map((perm) {
-                          final isGranted = _granted.contains(perm);
-                          return CheckboxListTile(
-                            value: isGranted,
-                            title: Text(
-                              perm,
-                              style: const TextStyle(
-                                fontFamily: 'monospace',
+        async.when(
+          loading: () => const Padding(
+            padding: EdgeInsets.symmetric(vertical: 48),
+            child: LoadingState(message: 'Loading permissions…'),
+          ),
+          error: (e, _) => ErrorState(
+            error: e,
+            onRetry: () =>
+                ref.invalidate(_rolePermissionsProvider(widget.roleId)),
+          ),
+          data: (data) {
+            _initFromData(data);
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (_isDirty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 14),
+                    child: UiCard(
+                      color: AppColors.warningSurface,
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.warning_amber_rounded,
+                            color: AppColors.warning,
+                          ),
+                          const SizedBox(width: 10),
+                          const Expanded(
+                            child: Text(
+                              'You have unsaved permission changes.',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
                                 fontSize: 13,
                               ),
                             ),
-                            secondary: Icon(
-                              isGranted ? Icons.lock_open : Icons.lock,
-                              color: isGranted ? Colors.green : Colors.grey,
-                              size: 18,
-                            ),
-                            onChanged: (checked) {
-                              setState(() {
-                                if (checked == true) {
-                                  _granted.add(perm);
-                                } else {
-                                  _granted.remove(perm);
-                                }
-                              });
-                            },
-                          );
-                        }).toList(),
+                          ),
+                          TextButton(
+                            onPressed: () =>
+                                setState(() => _granted = Set.of(_original)),
+                            child: const Text('Discard'),
+                          ),
+                          TextButton(
+                            onPressed: _save,
+                            child: const Text('Save now'),
+                          ),
+                        ],
                       ),
-                    );
-                  }).toList(),
+                    ),
+                  ),
+                if (_error != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 14),
+                    child: UiNotice('Error: $_error'),
+                  ),
+                AdaptiveGrid(
+                  columns: 2,
+                  mediumColumns: 2,
+                  gap: 14,
+                  children: [
+                    for (final entry in _permissionCatalogue.entries)
+                      _domainPanel(entry.key, entry.value),
+                  ],
                 ),
-              ),
-            ],
-          );
-        },
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _domainPanel(String domain, List<String> perms) {
+    final grantedCount = perms.where((p) => _granted.contains(p)).length;
+    return Panel(
+      title: domain,
+      trailing: Wrap(
+        spacing: 4,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          StatusPill(
+            '$grantedCount / ${perms.length} granted',
+            tone: grantedCount == perms.length
+                ? StatusTone.success
+                : grantedCount == 0
+                ? StatusTone.neutral
+                : StatusTone.warning,
+          ),
+          TextButton(
+            onPressed: () => _toggleAll(perms, true),
+            child: const Text('All'),
+          ),
+          TextButton(
+            onPressed: () => _toggleAll(perms, false),
+            child: const Text('None'),
+          ),
+        ],
+      ),
+      child: QueueList(
+        items: [
+          for (final perm in perms)
+            CheckRow(
+              label: perm,
+              checked: _granted.contains(perm),
+              onChanged: (checked) => setState(() {
+                checked ? _granted.add(perm) : _granted.remove(perm);
+              }),
+            ),
+        ],
       ),
     );
   }

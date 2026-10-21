@@ -72,9 +72,10 @@ void main() {
   });
 
   group('kPaymentMethods', () {
-    test('contains all 6 expected methods', () {
-      expect(kPaymentMethods, hasLength(6));
+    test('contains all 7 expected methods', () {
+      expect(kPaymentMethods, hasLength(7));
       expect(kPaymentMethods, contains('CASH'));
+      expect(kPaymentMethods, contains('DEPOSIT'));
       expect(kPaymentMethods, contains('BANK_TRANSFER'));
       expect(kPaymentMethods, contains('MOBILE_MONEY'));
     });

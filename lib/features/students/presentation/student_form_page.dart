@@ -7,7 +7,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../app/app_router.dart' show homeForRole;
 import '../../../core/utils/form_state_persistence.dart';
+import '../../../core/validation/app_validators.dart';
 import '../../../widgets/skeleton_loader.dart';
+import '../../../widgets/ui_kit.dart';
+import '../../../widgets/ui_workspace.dart';
+import '../domain/admission_progress.dart';
 import '../domain/student.dart';
 import '../data/student_repository.dart';
 import '../../authentication/presentation/providers/auth_provider.dart';
@@ -15,9 +19,13 @@ import '../../users/data/repositories/user_repository.dart';
 import '../../users/domain/models/guardian.dart';
 import '../../../core/services/audit_service.dart';
 import '../../academics/data/academic_repository.dart';
+import '../../academics/data/academic_setup_repository.dart';
 import '../../academics/domain/models/class_subject.dart';
 import '../../academics/domain/models/academic_year.dart';
 import '../../academics/domain/models/class_model.dart';
+import '../../../theme/app_tokens.dart';
+import 'admission_widgets.dart';
+import '../../../core/navigation/close_form.dart';
 
 final registrationAcademicRepositoryProvider = Provider<AcademicRepository>(
   (ref) => AcademicRepository(),
@@ -31,6 +39,28 @@ final registrationUserRepositoryProvider = Provider<UserRepository>(
 final registrationAuditProvider = Provider<AuditService>(
   (ref) => AuditService(),
 );
+
+final registrationSetupRepositoryProvider = Provider<AcademicSetupRepository>(
+  (ref) => AcademicSetupRepository(),
+);
+
+/// Names of the subjects a class offers (from the class-subject setup), used
+/// for the read-only preview in the admission workspace.
+final _classSubjectNamesProvider = FutureProvider.family<List<String>, String>((
+  ref,
+  classId,
+) async {
+  final rows = await ref
+      .watch(registrationSetupRepositoryProvider)
+      .configuredSubjects();
+  final names = <String>[
+    for (final row in rows)
+      if (row['class_id'] == classId)
+        ((row['subject'] as Map?)?['subjectname'] ?? '').toString(),
+  ]..removeWhere((name) => name.isEmpty);
+  names.sort();
+  return names;
+});
 
 final _academicYearsProvider = FutureProvider<List<AcademicYear>>((ref) {
   return ref.watch(registrationAcademicRepositoryProvider).listAcademicYears();
@@ -156,9 +186,13 @@ class RegistrationClassAssignment extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final years = ref.watch(_academicYearsProvider);
+    final selectedYear = years.asData?.value
+        .where((item) => item.id == academicYearId)
+        .firstOrNull;
     final classes = academicYearId == null
         ? const AsyncData<List<ClassModel>>([])
         : ref.watch(_classesForRegistrationProvider);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -174,7 +208,7 @@ class RegistrationClassAssignment extends ConsumerWidget {
             initialValue: academicYearId,
             isExpanded: true,
             decoration: const InputDecoration(
-              labelText: 'Academic Year (optional)',
+              labelText: 'Academic year, term and form (optional)',
             ),
             items: [
               const DropdownMenuItem<String>(
@@ -184,7 +218,7 @@ class RegistrationClassAssignment extends ConsumerWidget {
               for (final year in items)
                 DropdownMenuItem(
                   value: year.id,
-                  child: Text(formatAcademicYear(year.year)),
+                  child: Text(year.selectionLabel),
                 ),
             ],
             onChanged: onYearChanged,
@@ -198,25 +232,47 @@ class RegistrationClassAssignment extends ConsumerWidget {
             label: const Text('Could not load classes. Retry'),
             onPressed: () => ref.invalidate(_classesForRegistrationProvider),
           ),
-          data: (items) => DropdownButtonFormField<String>(
-            key: ValueKey('registration-class-$academicYearId-$classId'),
-            initialValue: classId,
-            isExpanded: true,
-            decoration: const InputDecoration(labelText: 'Class (optional)'),
-            disabledHint: const Text('Select an academic year first'),
-            items: [
-              const DropdownMenuItem<String>(
-                value: null,
-                child: Text('Assign later'),
+          data: (items) {
+            final selectedForm = selectedYear?.form;
+            final matchingItems = selectedForm == null
+                ? items
+                : items.where((item) => item.form == selectedForm).toList();
+            final selectedClassValue =
+                matchingItems.any((item) => item.classId == classId)
+                ? classId
+                : null;
+
+            return DropdownButtonFormField<String>(
+              key: ValueKey('registration-class-$academicYearId-$classId'),
+              initialValue: selectedClassValue,
+              isExpanded: true,
+              decoration: InputDecoration(
+                labelText: 'Class (optional)',
+                helperText: selectedForm == null
+                    ? null
+                    : 'Showing ${formatFormLevel(selectedForm)} classes only',
               ),
-              for (final item in items)
-                DropdownMenuItem(
-                  value: item.classId,
-                  child: Text(item.className),
+              disabledHint: const Text('Select an academic period first'),
+              items: [
+                const DropdownMenuItem<String>(
+                  value: null,
+                  child: Text('Assign later'),
                 ),
-            ],
-            onChanged: academicYearId == null ? null : onClassChanged,
-          ),
+                for (final item in matchingItems)
+                  DropdownMenuItem(
+                    value: item.classId,
+                    child: Text(item.className),
+                  ),
+              ],
+              validator: (_) {
+                if (classId != null && selectedClassValue == null) {
+                  return 'The selected class does not match this academic period.';
+                }
+                return null;
+              },
+              onChanged: academicYearId == null ? null : onClassChanged,
+            );
+          },
         ),
       ],
     );
@@ -271,6 +327,7 @@ class _StudentFormPageState extends ConsumerState<StudentFormPage> {
   bool _draftDirty = false;
 
   late final String _draftId;
+  final List<GlobalKey> _stageKeys = List.generate(5, (_) => GlobalKey());
 
   Map<String, dynamic> _draftData() => {
     'firstName': _firstNameCtrl.text,
@@ -288,7 +345,7 @@ class _StudentFormPageState extends ConsumerState<StudentFormPage> {
           'firstName': g.firstNameCtrl.text,
           'lastName': g.lastNameCtrl.text,
           'email': g.emailCtrl.text,
-          'phone': g.phoneCtrl.text,
+          'phone': AppValidators.canonicalMalawiPhone(g.phoneCtrl.text),
           'address': g.addressCtrl.text,
           'gender': g.gender,
           'relationship': g.relationship,
@@ -343,7 +400,9 @@ class _StudentFormPageState extends ConsumerState<StudentFormPage> {
             guardian.firstNameCtrl.text = saved['firstName'] as String? ?? '';
             guardian.lastNameCtrl.text = saved['lastName'] as String? ?? '';
             guardian.emailCtrl.text = saved['email'] as String? ?? '';
-            guardian.phoneCtrl.text = saved['phone'] as String? ?? '';
+            guardian.phoneCtrl.text = AppValidators.malawiSubscriberFromStored(
+              saved['phone'] as String?,
+            );
             guardian.addressCtrl.text = saved['address'] as String? ?? '';
             guardian.gender = saved['gender'] as String? ?? guardian.gender;
             guardian.relationship =
@@ -523,9 +582,13 @@ class _StudentFormPageState extends ConsumerState<StudentFormPage> {
   }
 
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) {
+      if (!_isEdit) _revealFirstIssue();
+      return;
+    }
     if (_dateOfBirth == null) {
       setState(() => _error = 'Date of birth is required.');
+      if (!_isEdit) _revealFirstIssue();
       return;
     }
     final guardiansToCreate = <_GuardianEntry>[];
@@ -548,12 +611,14 @@ class _StudentFormPageState extends ConsumerState<StudentFormPage> {
             () => _error =
                 'Enter a first name, last name and email for each added guardian, or leave the optional guardian blank.',
           );
+          _revealFirstIssue();
           return;
         }
         if (!emails.add(email)) {
           setState(
             () => _error = 'Use a different email address for each guardian.',
           );
+          _revealFirstIssue();
           return;
         }
         guardiansToCreate.add(guardian);
@@ -563,6 +628,7 @@ class _StudentFormPageState extends ConsumerState<StudentFormPage> {
           () => _error =
               'Link an existing parent or guardian, or enter a new guardian.',
         );
+        _revealFirstIssue();
         return;
       }
       if (guardiansToCreate.isNotEmpty && _guardianRoleId == null) {
@@ -613,7 +679,7 @@ class _StudentFormPageState extends ConsumerState<StudentFormPage> {
         _draftCommitted = true;
         _draftSaver.cancel();
         await FormStatePersistence.clearFormState(_draftId);
-        if (mounted) Navigator.pop(context, true);
+        if (mounted) closeForm(context, '/students', true);
         return;
       }
 
@@ -735,9 +801,7 @@ class _StudentFormPageState extends ConsumerState<StudentFormPage> {
             'lastname': lastName,
             'gender': g.gender,
             'email': email,
-            'phonenumber': g.phoneCtrl.text.trim().isEmpty
-                ? null
-                : g.phoneCtrl.text.trim(),
+            'phonenumber': AppValidators.canonicalMalawiPhone(g.phoneCtrl.text),
             'physicaladdress': g.addressCtrl.text.trim().isEmpty
                 ? null
                 : g.addressCtrl.text.trim(),
@@ -796,8 +860,19 @@ class _StudentFormPageState extends ConsumerState<StudentFormPage> {
         );
       }
 
-      // A direct visit to /students/new has no previous page to pop.
-      if (mounted) context.go(homeForRole(currentUser.roleName));
+      // A direct visit to /students/new has no previous page to pop. The
+      // messenger outlives this page, so the confirmation shows on the page
+      // that replaces the form.
+      if (mounted) {
+        final messenger = ScaffoldMessenger.of(context);
+        final text =
+            '${_firstNameCtrl.text.trim()} ${_lastNameCtrl.text.trim()} '
+            'registered${_existingGuardians.isEmpty ? '' : ' and linked to the existing guardian'}.';
+        context.go(homeForRole(currentUser.roleName));
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => messenger.showSnackBar(SnackBar(content: Text(text))),
+        );
+      }
     } catch (e) {
       if (mounted) {
         setState(
@@ -813,280 +888,687 @@ class _StudentFormPageState extends ConsumerState<StudentFormPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(_isEdit ? 'Edit Student' : 'Register Student'),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-        child: AutofillGroup(
-          child: Form(
-            key: _formKey,
-            onChanged: _scheduleDraft,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (_restoringDraft) ...[
-                  const SkeletonFormField(),
-                  const SizedBox(height: 12),
-                  const SkeletonFormField(),
-                ] else ...[
+    if (!_isEdit) return _buildAdmission(context);
+    return UiPage(
+      maxWidth: 920,
+      children: [
+        const PageHead(
+          kicker: 'People',
+          title: 'Edit Student',
+          subtitle: 'Update identity details and enrollment status.',
+        ),
+        FormPanel(title: 'Student record', child: _buildFormBody(context)),
+      ],
+    );
+  }
+
+  // ── Admission workspace (registration mode) ──────────────────────────────
+
+  static const _admissionSteps = [
+    WorkspaceStep('Student', 'Identity'),
+    WorkspaceStep('Guardian', 'Find or create'),
+    WorkspaceStep('Class', 'Subjects follow'),
+    WorkspaceStep('Access', 'Guardian login'),
+    WorkspaceStep('Review', 'One submit'),
+  ];
+
+  AdmissionProgress _progress() => AdmissionProgress.from(
+    firstName: _firstNameCtrl.text,
+    lastName: _lastNameCtrl.text,
+    hasDateOfBirth: _dateOfBirth != null,
+    existingGuardians: _existingGuardians.length,
+    newGuardianDrafts: [
+      for (final g in _guardians)
+        NewGuardianDraft(
+          firstName: g.firstNameCtrl.text,
+          lastName: g.lastNameCtrl.text,
+          email: g.emailCtrl.text,
+          touched: [
+            g.firstNameCtrl,
+            g.lastNameCtrl,
+            g.emailCtrl,
+            g.phoneCtrl,
+            g.addressCtrl,
+          ].any((controller) => controller.text.trim().isNotEmpty),
+        ),
+    ],
+    classChosen: _selectedAcademicYearId != null && _selectedClassId != null,
+  );
+
+  String get _studentDisplayName => [
+    _firstNameCtrl.text.trim(),
+    _middleNameCtrl.text.trim(),
+    _lastNameCtrl.text.trim(),
+  ].where((part) => part.isNotEmpty).join(' ');
+
+  void _onFormChanged() {
+    _scheduleDraft();
+    // Keep the stage ticks and the side summary in step with what is typed.
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _scrollToStage(int index) async {
+    final target = _stageKeys[index].currentContext;
+    if (target == null) return;
+    await Scrollable.ensureVisible(
+      target,
+      duration: const Duration(milliseconds: 250),
+      alignment: 0.02,
+      curve: Curves.easeOut,
+    );
+  }
+
+  /// Bring the first stage that still has a problem into view.
+  void _revealFirstIssue() {
+    final progress = _progress();
+    final stage = !progress.studentReady
+        ? AdmissionProgress.studentStage
+        : AdmissionProgress.guardianStage;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _scrollToStage(stage);
+    });
+  }
+
+  Widget _buildAdmission(BuildContext context) {
+    final progress = _progress();
+    final classLine = _classSummaryLine();
+    final names = _selectedClassId == null
+        ? null
+        : ref
+              .watch(_classSubjectNamesProvider(_selectedClassId!))
+              .asData
+              ?.value;
+    final guardianLines = [
+      for (final selection in _existingGuardians)
+        '${selection.guardian.fullName} (linked)',
+      for (final g in _guardians)
+        if (g.firstNameCtrl.text.trim().isNotEmpty &&
+            g.lastNameCtrl.text.trim().isNotEmpty)
+          '${g.firstNameCtrl.text.trim()} ${g.lastNameCtrl.text.trim()} (new)',
+    ];
+    final facts = [
+      if (_gender.isNotEmpty) _gender == 'MALE' ? 'Male' : 'Female',
+      if (_dateOfBirth != null) 'born ${formatUiDate(_dateOfBirth)}',
+    ].join(' · ');
+
+    return UiPage(
+      maxWidth: 1180,
+      children: [
+        const PageHead(
+          kicker: 'People',
+          title: 'Register Student',
+          subtitle:
+              'Student identity, guardian, class and access in one guided workspace. A single submission creates everything.',
+        ),
+        if (_restoringDraft) ...[
+          const SkeletonFormField(),
+          const SizedBox(height: 12),
+          const SkeletonFormField(),
+        ] else
+          AutofillGroup(
+            child: Form(
+              key: _formKey,
+              onChanged: _onFormChanged,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  WorkspaceStepper(
+                    steps: _admissionSteps,
+                    current: progress.currentStage,
+                    completed: progress.completedStages,
+                    freeNavigation: true,
+                    onSelect: _scrollToStage,
+                  ),
                   if (_draftSavedAt != null && !_loading)
                     Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.only(bottom: 10),
                       child: Text(
                         'Draft saved on this device',
                         style: Theme.of(context).textTheme.labelSmall,
                       ),
                     ),
-                  // Student details section
-                  AbsorbPointer(
-                    absorbing:
-                        _loading ||
-                        (!_isEdit && _registrationStudentId != null),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  SplitLayout(
+                    main: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _sectionHeader('Student Information', Icons.school),
-                        const SizedBox(height: 8),
-                        _field(_firstNameCtrl, 'First Name'),
-                        _field(_middleNameCtrl, 'Middle Name', required: false),
-                        _field(_lastNameCtrl, 'Last Name'),
-                        _field(
-                          _addressCtrl,
-                          'Physical Address',
-                          required: false,
-                        ),
-                        DropdownButtonFormField<String>(
-                          initialValue: _gender,
-                          decoration: const InputDecoration(
-                            labelText: 'Gender',
-                          ),
-                          items: const [
-                            DropdownMenuItem(
-                              value: 'MALE',
-                              child: Text('Male'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'FEMALE',
-                              child: Text('Female'),
-                            ),
-                          ],
-                          onChanged: (v) => setState(() => _gender = v!),
-                        ),
-                        const SizedBox(height: 12),
-                        GestureDetector(
-                          onTap: _pickDate,
-                          child: InputDecorator(
-                            decoration: const InputDecoration(
-                              labelText: 'Date of Birth *',
-                              suffixIcon: Icon(Icons.calendar_today),
-                            ),
-                            child: Text(
-                              _dateOfBirth == null
-                                  ? 'Tap to select'
-                                  : _dateOfBirth!.toIso8601String().substring(
-                                      0,
-                                      10,
-                                    ),
-                              style: TextStyle(
-                                color: _dateOfBirth == null
-                                    ? Colors.grey
-                                    : null,
-                              ),
-                            ),
-                          ),
-                        ),
-                        if (_isEdit) ...[
-                          const SizedBox(height: 12),
-                          DropdownButtonFormField<String>(
-                            initialValue: _status,
-                            decoration: const InputDecoration(
-                              labelText: 'Enrollment Status',
-                            ),
-                            items: const [
-                              DropdownMenuItem(
-                                value: 'enrolled',
-                                child: Text('Enrolled'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'withdrawn',
-                                child: Text('Withdrawn'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'graduated',
-                                child: Text('Graduated'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'transferred',
-                                child: Text('Transferred'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'suspended',
-                                child: Text('Suspended'),
-                              ),
-                            ],
-                            onChanged: (v) => setState(() => _status = v!),
-                          ),
-                          const SizedBox(height: 24),
-                          _sectionHeader('Assigned Subjects', Icons.book),
-                          const SizedBox(height: 8),
-                          _StudentSubjectsDisplay(
-                            studentId: widget.existing!.studentId,
-                          ),
-                        ],
-
-                        // Guardian section - only for new registration
+                        _studentStage(progress),
+                        _guardianStage(progress),
+                        _classStage(progress),
+                        _accessStage(progress),
+                        _reviewStage(progress),
                       ],
                     ),
-                  ),
-                  if (!_isEdit) ...[
-                    const SizedBox(height: 24),
-                    _sectionHeader('Class Assignment', Icons.class_outlined),
-                    const SizedBox(height: 4),
-                    const Text('Optional — you can assign a class later.'),
-                    const SizedBox(height: 12),
-                    AbsorbPointer(
-                      absorbing: _placementSaved || _loading,
-                      child: RegistrationClassAssignment(
-                        academicYearId: _selectedAcademicYearId,
-                        classId: _selectedClassId,
-                        onYearChanged: (value) => setState(() {
-                          _selectedAcademicYearId = value;
-                          _selectedClassId = null;
-                        }),
-                        onClassChanged: (value) =>
-                            setState(() => _selectedClassId = value),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    _sectionHeader('Guardians', Icons.family_restroom),
-                    const SizedBox(height: 4),
-                    Text(
-                      'At least one guardian is required. Link a registered parent, '
-                      'create a new guardian account, or do both.',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    OutlinedButton.icon(
-                      onPressed: _loading || _loadingExistingGuardians
+                    side: AdmissionSummaryPanel(
+                      progress: progress,
+                      studentName: _studentDisplayName,
+                      studentFacts: progress.studentReady ? facts : null,
+                      guardianLines: guardianLines,
+                      classLine: classLine,
+                      subjectsLine: names == null
                           ? null
-                          : _selectExistingGuardian,
-                      icon: _loadingExistingGuardians
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.person_search_outlined),
-                      label: const Text('Link Existing Parent or Guardian'),
-                    ),
-                    if (_existingGuardians.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      ..._existingGuardians.map(
-                        (selection) => _ExistingGuardianCard(
-                          selection: selection,
-                          onRelationshipChanged: selection.linked
-                              ? null
-                              : (relationship) {
-                                  setState(
-                                    () => selection.relationship = relationship,
-                                  );
-                                  _scheduleDraft();
-                                },
-                          onRemove: selection.linked
-                              ? null
-                              : () => _removeExistingGuardian(selection),
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    Text(
-                      'Create a new guardian account',
-                      style: Theme.of(context).textTheme.titleSmall,
-                    ),
-                    const SizedBox(height: 8),
-                    ..._guardians.asMap().entries.map(
-                      (entry) => AbsorbPointer(
-                        absorbing:
-                            _loading || entry.value.createdUserId != null,
-                        child: _GuardianCard(
-                          index: entry.key,
-                          entry: entry.value,
-                          isPrimary: entry.key == 0,
-                          isRequired:
-                              entry.key == 0 && _existingGuardians.isEmpty,
-                          onRemove: () => _removeGuardian(entry.key),
-                        ),
-                      ),
-                    ),
-                    if (_guardians.length < 4)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: OutlinedButton.icon(
-                          onPressed: _addOptionalGuardian,
-                          icon: const Icon(Icons.add),
-                          label: Text(
-                            'Add ${_guardians.length == 1
-                                ? 'Second'
-                                : _guardians.length == 2
-                                ? 'Third'
-                                : 'Fourth'} Guardian (Optional)',
-                          ),
-                        ),
-                      ),
-                  ],
-
-                  // Error
-                  if (_error != null) ...[
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.red.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        _error!,
-                        style: TextStyle(
-                          color: Colors.red.shade800,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ),
-                  ],
-
-                  const SizedBox(height: 24),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: _loading ? null : _submit,
-                      icon: _loading
-                          ? const SizedBox(
-                              height: 16,
-                              width: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : Icon(_isEdit ? Icons.save : Icons.how_to_reg),
-                      label: Text(
-                        _loading
-                            ? 'Saving...'
-                            : _isEdit
-                            ? 'Save Changes'
-                            : 'Register Student',
-                      ),
+                          : names.isEmpty
+                          ? 'No subjects set up for this class yet'
+                          : '${names.length} subject${names.length == 1 ? '' : 's'} generated from Class Setup',
                     ),
                   ),
                 ],
-              ],
+              ),
             ),
           ),
+      ],
+    );
+  }
+
+  String? _classSummaryLine() {
+    final classId = _selectedClassId;
+    final yearId = _selectedAcademicYearId;
+    if (classId == null || yearId == null) return null;
+    final classes = ref.watch(_classesForRegistrationProvider).asData?.value;
+    final years = ref.watch(_academicYearsProvider).asData?.value;
+    final className = classes
+        ?.where((c) => c.classId == classId)
+        .map((c) => c.className)
+        .firstOrNull;
+    final year = years?.where((y) => y.id == yearId).firstOrNull;
+    return 'Enrolment in ${className ?? 'the chosen class'}${year == null ? '' : ' (${year.selectionLabel})'}';
+  }
+
+  Widget _studentStage(AdmissionProgress progress) {
+    return AdmissionStageCard(
+      key: _stageKeys[AdmissionProgress.studentStage],
+      number: 1,
+      title: 'Student identity',
+      subtitle: 'Who is being admitted. Required fields are marked.',
+      done: progress.studentReady,
+      child: AbsorbPointer(
+        absorbing: _loading || _registrationStudentId != null,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            FieldGrid(
+              children: [
+                _field(_firstNameCtrl, 'First Name'),
+                _field(_middleNameCtrl, 'Middle Name', required: false),
+                _field(_lastNameCtrl, 'Last Name'),
+                DropdownButtonFormField<String>(
+                  initialValue: _gender,
+                  decoration: const InputDecoration(labelText: 'Gender'),
+                  items: const [
+                    DropdownMenuItem(value: 'MALE', child: Text('Male')),
+                    DropdownMenuItem(value: 'FEMALE', child: Text('Female')),
+                  ],
+                  onChanged: (v) {
+                    setState(() => _gender = v!);
+                    _scheduleDraft();
+                  },
+                ),
+                GestureDetector(
+                  onTap: _pickDate,
+                  child: InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: 'Date of Birth *',
+                      suffixIcon: Icon(Icons.calendar_today),
+                    ),
+                    child: Text(
+                      _dateOfBirth == null
+                          ? 'Tap to select'
+                          : _dateOfBirth!.toIso8601String().substring(0, 10),
+                      style: TextStyle(
+                        color: _dateOfBirth == null ? Colors.grey : null,
+                      ),
+                    ),
+                  ),
+                ),
+                FullWidth(
+                  child: _field(
+                    _addressCtrl,
+                    'Physical Address',
+                    required: false,
+                  ),
+                ),
+              ],
+            ),
+            DetailLine(
+              'Admission date',
+              '${formatUiDate(_registrationDate ?? DateTime.now())} (today)',
+            ),
+            const InlineGuide(
+              text:
+                  'Students never receive a login. Only the linked guardians can sign in to see their results and fees.',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _guardianStage(AdmissionProgress progress) {
+    return AdmissionStageCard(
+      key: _stageKeys[AdmissionProgress.guardianStage],
+      number: 2,
+      title: 'Guardian and relationship',
+      subtitle:
+          'At least one guardian is required. Link a registered parent, create a new guardian here, or do both.',
+      done: progress.guardianReady,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              onPressed: _loading || _loadingExistingGuardians
+                  ? null
+                  : _selectExistingGuardian,
+              icon: _loadingExistingGuardians
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.person_search_outlined),
+              label: const Text('Link Existing Parent or Guardian'),
+            ),
+          ),
+          if (_existingGuardians.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            ..._existingGuardians.map(
+              (selection) => _ExistingGuardianCard(
+                selection: selection,
+                onRelationshipChanged: selection.linked
+                    ? null
+                    : (relationship) {
+                        setState(() => selection.relationship = relationship);
+                        _scheduleDraft();
+                      },
+                onRemove: selection.linked
+                    ? null
+                    : () => _removeExistingGuardian(selection),
+              ),
+            ),
+          ],
+          const SizedBox(height: 14),
+          Text(
+            'Or create a new guardian',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          const SizedBox(height: 8),
+          ..._guardians.asMap().entries.map(
+            (entry) => AbsorbPointer(
+              absorbing: _loading || entry.value.createdUserId != null,
+              child: _GuardianCard(
+                index: entry.key,
+                entry: entry.value,
+                isPrimary: entry.key == 0,
+                isRequired: entry.key == 0 && _existingGuardians.isEmpty,
+                onRemove: () => _removeGuardian(entry.key),
+              ),
+            ),
+          ),
+          if (_guardians.length < 4)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: OutlinedButton.icon(
+                onPressed: _addOptionalGuardian,
+                icon: const Icon(Icons.add),
+                label: Text(
+                  'Add ${_guardians.length == 1
+                      ? 'Second'
+                      : _guardians.length == 2
+                      ? 'Third'
+                      : 'Fourth'} Guardian (Optional)',
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _classStage(AdmissionProgress progress) {
+    final classId = _selectedClassId;
+    return AdmissionStageCard(
+      key: _stageKeys[AdmissionProgress.classStage],
+      number: 3,
+      title: 'Current class',
+      subtitle:
+          'Choose the year and class now, or assign the class later. Subjects are generated from the class setup.',
+      done: progress.classChosen,
+      optional: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          AbsorbPointer(
+            absorbing: _placementSaved || _loading,
+            child: RegistrationClassAssignment(
+              academicYearId: _selectedAcademicYearId,
+              classId: _selectedClassId,
+              onYearChanged: (value) {
+                setState(() {
+                  _selectedAcademicYearId = value;
+                  _selectedClassId = null;
+                });
+                _scheduleDraft();
+              },
+              onClassChanged: (value) {
+                setState(() => _selectedClassId = value);
+                _scheduleDraft();
+              },
+            ),
+          ),
+          if (classId == null)
+            const InlineGuide(
+              text:
+                  'Pick a year and class to preview the subjects the student will receive. They follow the class; nothing is typed here.',
+            )
+          else
+            _subjectPreview(classId),
+        ],
+      ),
+    );
+  }
+
+  Widget _subjectPreview(String classId) {
+    final names = ref.watch(_classSubjectNamesProvider(classId));
+    return names.when(
+      loading: () => const Padding(
+        padding: EdgeInsets.only(top: 16),
+        child: SkeletonFormField(),
+      ),
+      error: (_, _) => const InlineGuide(
+        text:
+            'The subject preview could not be loaded. Subjects still follow the class setup when the student is placed.',
+      ),
+      data: (items) {
+        if (items.isEmpty) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const UiNotice(
+                'No subjects are set up for this class yet. The student will be placed without subjects until the class lists them.',
+                tone: StatusTone.warning,
+                icon: Icons.info_outline,
+              ),
+              const SizedBox(height: 10),
+              UiButton.secondary(
+                'Open Class Setup',
+                icon: Icons.account_tree_outlined,
+                onPressed: () => context.push(
+                  '/academics/class-setup?stage=subjects&classId=$classId',
+                ),
+              ),
+            ],
+          );
+        }
+        return Padding(
+          padding: const EdgeInsets.only(top: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${items.length} subject${items.length == 1 ? '' : 's'} generated for this class',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [for (final name in items) StatusPill(name)],
+              ),
+              const InlineGuide(
+                text:
+                    'To change what a class offers, use Class Setup. The student\'s class history is kept.',
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _accessStage(AdmissionProgress progress) {
+    final newGuardians = [
+      for (final g in _guardians)
+        if (g.emailCtrl.text.trim().isNotEmpty &&
+            g.firstNameCtrl.text.trim().isNotEmpty &&
+            g.lastNameCtrl.text.trim().isNotEmpty)
+          '${g.firstNameCtrl.text.trim()} ${g.lastNameCtrl.text.trim()} (${g.emailCtrl.text.trim()})',
+    ];
+    return AdmissionStageCard(
+      key: _stageKeys[AdmissionProgress.accessStage],
+      number: 4,
+      title: 'Guardian access',
+      subtitle: 'What each guardian receives when you submit.',
+      done: progress.guardianReady,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_existingGuardians.isEmpty && newGuardians.isEmpty)
+            const Text(
+              'Add a guardian in stage 2 to see the access they will get.',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          for (final selection in _existingGuardians)
+            DetailLine(
+              selection.guardian.fullName,
+              'Already registered - no new login',
+            ),
+          for (final line in newGuardians)
+            DetailLine(line, 'New login with a temporary password'),
+          if (newGuardians.isNotEmpty)
+            const InlineGuide(
+              text:
+                  'After you submit, the temporary passwords are shown once so you can hand them over. Each guardian must change the password at first sign-in.',
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _reviewStage(AdmissionProgress progress) {
+    final classLine = _classSummaryLine();
+    return AdmissionStageCard(
+      key: _stageKeys[AdmissionProgress.reviewStage],
+      number: 5,
+      title: 'Review and submit',
+      subtitle: 'Check the summary, then register the student once.',
+      done: progress.canSubmit,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          DetailLine(
+            'Student',
+            _studentDisplayName.isEmpty ? '-' : _studentDisplayName,
+          ),
+          DetailLine(
+            'Guardians',
+            progress.guardiansToLink == 0
+                ? '-'
+                : '${progress.guardiansToLink} to link',
+          ),
+          DetailLine('Class', classLine ?? 'Assign later'),
+          if (_error != null) UiNotice(_error!, icon: Icons.error_outline),
+          if (!progress.canSubmit && progress.blockers.isNotEmpty)
+            UiNotice(
+              'Still needed: ${progress.blockers.join(', ')}.',
+              tone: StatusTone.warning,
+              icon: Icons.info_outline,
+            ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _loading ? null : _submit,
+              icon: _loading
+                  ? const SizedBox(
+                      height: 16,
+                      width: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.how_to_reg),
+              label: Text(_loading ? 'Saving...' : 'Register Student'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFormBody(BuildContext context) {
+    return AutofillGroup(
+      child: Form(
+        key: _formKey,
+        onChanged: _scheduleDraft,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_restoringDraft) ...[
+              const SkeletonFormField(),
+              const SizedBox(height: 12),
+              const SkeletonFormField(),
+            ] else ...[
+              if (_draftSavedAt != null && !_loading)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    'Draft saved on this device',
+                    style: Theme.of(context).textTheme.labelSmall,
+                  ),
+                ),
+              // Student details section
+              AbsorbPointer(
+                absorbing:
+                    _loading || (!_isEdit && _registrationStudentId != null),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _sectionHeader('Student Information', Icons.school),
+                    const SizedBox(height: 8),
+                    _field(_firstNameCtrl, 'First Name'),
+                    _field(_middleNameCtrl, 'Middle Name', required: false),
+                    _field(_lastNameCtrl, 'Last Name'),
+                    _field(_addressCtrl, 'Physical Address', required: false),
+                    DropdownButtonFormField<String>(
+                      initialValue: _gender,
+                      decoration: const InputDecoration(labelText: 'Gender'),
+                      items: const [
+                        DropdownMenuItem(value: 'MALE', child: Text('Male')),
+                        DropdownMenuItem(
+                          value: 'FEMALE',
+                          child: Text('Female'),
+                        ),
+                      ],
+                      onChanged: (v) => setState(() => _gender = v!),
+                    ),
+                    const SizedBox(height: 12),
+                    GestureDetector(
+                      onTap: _pickDate,
+                      child: InputDecorator(
+                        decoration: const InputDecoration(
+                          labelText: 'Date of Birth *',
+                          suffixIcon: Icon(Icons.calendar_today),
+                        ),
+                        child: Text(
+                          _dateOfBirth == null
+                              ? 'Tap to select'
+                              : _dateOfBirth!.toIso8601String().substring(
+                                  0,
+                                  10,
+                                ),
+                          style: TextStyle(
+                            color: _dateOfBirth == null ? Colors.grey : null,
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (_isEdit) ...[
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        initialValue: _status,
+                        decoration: const InputDecoration(
+                          labelText: 'Enrollment Status',
+                        ),
+                        items: const [
+                          DropdownMenuItem(
+                            value: 'enrolled',
+                            child: Text('Enrolled'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'withdrawn',
+                            child: Text('Withdrawn'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'graduated',
+                            child: Text('Graduated'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'transferred',
+                            child: Text('Transferred'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'suspended',
+                            child: Text('Suspended'),
+                          ),
+                        ],
+                        onChanged: (v) => setState(() => _status = v!),
+                      ),
+                      const SizedBox(height: 24),
+                      _sectionHeader('Assigned Subjects', Icons.book),
+                      const SizedBox(height: 8),
+                      _StudentSubjectsDisplay(
+                        studentId: widget.existing!.studentId,
+                      ),
+                    ],
+
+                    // Guardian section - only for new registration
+                  ],
+                ),
+              ),
+              // Error
+              if (_error != null) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    _error!,
+                    style: TextStyle(color: Colors.red.shade800, fontSize: 13),
+                  ),
+                ),
+              ],
+
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: _loading ? null : _submit,
+                  icon: _loading
+                      ? const SizedBox(
+                          height: 16,
+                          width: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.save),
+                  label: Text(_loading ? 'Saving...' : 'Save Changes'),
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     );
@@ -1401,6 +1883,12 @@ class _GuardianCardState extends State<_GuardianCard> {
               'Phone Number',
               required: false,
               keyboard: TextInputType.phone,
+              prefixText: '+265 ',
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(9),
+              ],
+              extraValidator: AppValidators.malawiSubscriberDigits,
             ),
             _f(widget.entry.addressCtrl, 'Physical Address', required: false),
             const SizedBox(height: 4),
@@ -1490,6 +1978,8 @@ class _GuardianCardState extends State<_GuardianCard> {
     bool required = true,
     TextInputType? keyboard,
     String? hint,
+    String? prefixText,
+    List<TextInputFormatter>? inputFormatters,
     String? Function(String?)? extraValidator,
   }) {
     return Padding(
@@ -1505,7 +1995,12 @@ class _GuardianCardState extends State<_GuardianCard> {
           _ => null,
         },
         keyboardType: keyboard,
-        decoration: InputDecoration(labelText: label, hintText: hint),
+        inputFormatters: inputFormatters,
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: hint,
+          prefixText: prefixText,
+        ),
         validator: (v) {
           if (required && (v == null || v.trim().isEmpty)) {
             return '$label is required.';
@@ -1739,7 +2234,7 @@ class _StudentSubjectsDisplay extends ConsumerWidget {
                   const Icon(
                     Icons.book_outlined,
                     size: 20,
-                    color: Colors.indigo,
+                    color: AppColors.primary,
                   ),
                   const SizedBox(width: 12),
                   Expanded(

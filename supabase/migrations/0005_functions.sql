@@ -19,7 +19,6 @@ AS $$
   WHERE su.userid = auth.uid()
     AND su.isactive = true
 $$;
-
 -- ─────────────────────────────────────────────
 -- is_app_role(expected text)
 -- Returns true when the authenticated user has the given role.
@@ -33,7 +32,6 @@ SET search_path = public
 AS $$
   SELECT upper(coalesce(public.current_app_role(), '')) = upper(expected)
 $$;
-
 -- ─────────────────────────────────────────────
 -- close_current_class_placement(student_id uuid)
 -- Sets enddate = CURRENT_DATE on the active studentclasshistory row.
@@ -49,7 +47,6 @@ AS $$
   WHERE studentid = student_id
     AND enddate IS NULL;
 $$;
-
 -- ─────────────────────────────────────────────
 -- updated_at trigger function
 -- Automatically keeps updatedat current on any UPDATE.
@@ -63,7 +60,6 @@ BEGIN
   RETURN NEW;
 END;
 $$;
-
 -- Attach the trigger to all tables that have updatedat
 DO $$
 DECLARE

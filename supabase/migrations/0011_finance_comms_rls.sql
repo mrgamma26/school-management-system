@@ -8,7 +8,6 @@ ALTER TABLE public.financialadjustment ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notification       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.teachercomment     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.calendarevent      ENABLE ROW LEVEL SECURITY;
-
 -- ─────────────────────────────────────────────
 -- feestructure
 -- ─────────────────────────────────────────────
@@ -18,7 +17,6 @@ ON public.feestructure FOR ALL TO authenticated
 USING (
   public.current_app_role() IN ('ACCOUNTANT', 'SYSTEM_ADMIN')
 );
-
 CREATE POLICY "staff and head teacher can read fee structures"
 ON public.feestructure FOR SELECT TO authenticated
 USING (
@@ -26,7 +24,6 @@ USING (
     'REGISTRAR', 'TEACHER', 'HEAD_TEACHER', 'ICA_DIRECTOR'
   )
 );
-
 -- ─────────────────────────────────────────────
 -- payment
 -- ─────────────────────────────────────────────
@@ -35,13 +32,11 @@ ON public.payment FOR ALL TO authenticated
 USING (
   public.current_app_role() IN ('ACCOUNTANT', 'SYSTEM_ADMIN')
 );
-
 CREATE POLICY "head teacher and director can read payments"
 ON public.payment FOR SELECT TO authenticated
 USING (
   public.current_app_role() IN ('HEAD_TEACHER', 'ICA_DIRECTOR')
 );
-
 -- Guardians see payments for their linked students
 CREATE POLICY "guardians see linked student payments"
 ON public.payment FOR SELECT TO authenticated
@@ -54,7 +49,6 @@ USING (
       AND sg.studentid = payment.studentid
   )
 );
-
 -- ─────────────────────────────────────────────
 -- financialadjustment
 -- ─────────────────────────────────────────────
@@ -63,13 +57,11 @@ ON public.financialadjustment FOR ALL TO authenticated
 USING (
   public.current_app_role() IN ('ACCOUNTANT', 'SYSTEM_ADMIN')
 );
-
 CREATE POLICY "head teacher and director can read adjustments"
 ON public.financialadjustment FOR SELECT TO authenticated
 USING (
   public.current_app_role() IN ('HEAD_TEACHER', 'ICA_DIRECTOR')
 );
-
 -- ─────────────────────────────────────────────
 -- notification
 -- ─────────────────────────────────────────────
@@ -83,7 +75,6 @@ USING (
       AND s.userid = auth.uid()
   )
 );
-
 -- Privileged roles can read all notifications.
 CREATE POLICY "privileged roles can read all notifications"
 ON public.notification FOR SELECT TO authenticated
@@ -92,7 +83,6 @@ USING (
     'HEAD_TEACHER', 'SYSTEM_ADMIN', 'ICA_DIRECTOR', 'REGISTRAR'
   )
 );
-
 -- Guardians read only their own notifications.
 CREATE POLICY "guardian reads own notifications"
 ON public.notification FOR SELECT TO authenticated
@@ -103,7 +93,6 @@ USING (
       AND g.userid = auth.uid()
   )
 );
-
 -- Guardians can mark their own notifications as read (UPDATE readstatus only).
 CREATE POLICY "guardian can mark own notification read"
 ON public.notification FOR UPDATE TO authenticated
@@ -121,7 +110,6 @@ WITH CHECK (
       AND g.userid = auth.uid()
   )
 );
-
 -- ─────────────────────────────────────────────
 -- teachercomment
 -- ─────────────────────────────────────────────
@@ -135,7 +123,6 @@ USING (
       AND s.userid = auth.uid()
   )
 );
-
 -- Privileged roles can read all comments.
 CREATE POLICY "privileged roles can read all comments"
 ON public.teachercomment FOR SELECT TO authenticated
@@ -144,7 +131,6 @@ USING (
     'HEAD_TEACHER', 'SYSTEM_ADMIN', 'ICA_DIRECTOR', 'REGISTRAR'
   )
 );
-
 -- Guardians see comments for their linked students.
 CREATE POLICY "guardians see linked student comments"
 ON public.teachercomment FOR SELECT TO authenticated
@@ -157,7 +143,6 @@ USING (
       AND sg.studentid = teachercomment.studentid
   )
 );
-
 -- ─────────────────────────────────────────────
 -- calendarevent
 -- ─────────────────────────────────────────────
@@ -165,7 +150,6 @@ USING (
 CREATE POLICY "authenticated users can read calendar events"
 ON public.calendarevent FOR SELECT TO authenticated
 USING (true);
-
 -- Staff can manage events they created.
 CREATE POLICY "staff can manage own events"
 ON public.calendarevent FOR ALL TO authenticated
@@ -176,7 +160,6 @@ USING (
       AND s.userid = auth.uid()
   )
 );
-
 -- Head teacher and admin can manage all events.
 CREATE POLICY "head teacher can manage all events"
 ON public.calendarevent FOR ALL TO authenticated

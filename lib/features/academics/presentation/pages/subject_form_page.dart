@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
+import '../../../../widgets/ui_kit.dart';
 import '../../data/academic_repository.dart';
 import '../../domain/models/subject.dart';
 
-/// Create or edit a subject.
+/// Screen 24 - Create or edit a subject.
 class SubjectFormPage extends ConsumerStatefulWidget {
   final Subject? existing;
+  final AcademicRepository? repository;
 
-  const SubjectFormPage({this.existing, super.key});
+  const SubjectFormPage({this.existing, this.repository, super.key});
 
   @override
   ConsumerState<SubjectFormPage> createState() => _SubjectFormPageState();
@@ -16,7 +19,8 @@ class SubjectFormPage extends ConsumerStatefulWidget {
 
 class _SubjectFormPageState extends ConsumerState<SubjectFormPage> {
   final _formKey = GlobalKey<FormState>();
-  final _repo = AcademicRepository();
+  late final AcademicRepository _repo =
+      widget.repository ?? AcademicRepository();
 
   late final TextEditingController _nameCtrl;
   late final TextEditingController _descCtrl;
@@ -63,7 +67,13 @@ class _SubjectFormPageState extends ConsumerState<SubjectFormPage> {
         );
       }
 
-      if (mounted) context.go('/academics/subjects');
+      if (mounted) {
+        if (context.canPop()) {
+          context.pop(true);
+        } else {
+          context.go('/academics/subjects');
+        }
+      }
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
@@ -73,56 +83,57 @@ class _SubjectFormPageState extends ConsumerState<SubjectFormPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(_isEdit ? 'Edit Subject' : 'Create Subject')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            children: [
-              TextFormField(
-                controller: _nameCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Subject Name',
-                  hintText: 'e.g., Mathematics, English, Biology',
-                ),
-                validator: (v) => (v == null || v.trim().isEmpty)
-                    ? 'Subject name is required.'
-                    : null,
-              ),
-              const SizedBox(height: 16),
-
-              TextFormField(
-                controller: _descCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Description (optional)',
-                  hintText: 'Brief description of the subject',
-                ),
-                maxLines: 3,
-              ),
-
-              if (_error != null) ...[
-                const SizedBox(height: 16),
-                Text(_error!, style: const TextStyle(color: Colors.red)),
-              ],
-
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _loading ? null : _submit,
-                  child: _loading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(_isEdit ? 'Update Subject' : 'Create Subject'),
+    return FormPageLayout(
+      kicker: 'Academics',
+      title: _isEdit ? 'Edit Subject' : 'Create Subject',
+      subtitle: 'Add a reusable subject to the school catalogue.',
+      formTitle: 'Subject information',
+      saving: _loading,
+      saveLabel: _isEdit ? 'Update Subject' : 'Create Subject',
+      onSave: _submit,
+      error: _error,
+      guideTitle: 'Next:',
+      guide:
+          'After saving, mark the teachers who teach it on their staff profile, then add it to each class in Class Setup and choose a teacher.',
+      side: const [
+        CheckRow(label: 'Subject names must be unique', checked: true),
+        CheckRow(
+          label: 'Deleting is blocked once a class uses it',
+          checked: true,
+        ),
+        CheckRow(label: 'Changes are audited', checked: true),
+      ],
+      form: Form(
+        key: _formKey,
+        child: FieldGrid(
+          children: [
+            FullWidth(
+              child: UiField(
+                label: 'Subject name',
+                child: TextFormField(
+                  controller: _nameCtrl,
+                  decoration: const InputDecoration(
+                    hintText: 'e.g., Mathematics, English, Biology',
+                  ),
+                  validator: (v) => (v == null || v.trim().isEmpty)
+                      ? 'Subject name is required.'
+                      : null,
                 ),
               ),
-            ],
-          ),
+            ),
+            FullWidth(
+              child: UiField(
+                label: 'Description (optional)',
+                child: TextFormField(
+                  controller: _descCtrl,
+                  decoration: const InputDecoration(
+                    hintText: 'Brief description of the subject',
+                  ),
+                  maxLines: 3,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

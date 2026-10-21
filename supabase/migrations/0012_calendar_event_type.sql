@@ -16,7 +16,6 @@ DO $$ BEGIN
   );
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
-
 -- ─────────────────────────────────────────────
 -- 2. Migrate existing rows — map any old free-text to the closest enum value.
 --    Unknown values default to SCHOOL_EVENT so nothing is lost.
@@ -29,35 +28,29 @@ SET eventtype = CASE
   WHEN UPPER(eventtype) LIKE '%TERM%'     THEN 'TERM_DATE'
   ELSE 'SCHOOL_EVENT'
 END;
-
 -- ─────────────────────────────────────────────
 -- 3. Alter the column to use the new enum
 -- ─────────────────────────────────────────────
 ALTER TABLE public.calendarevent
   ALTER COLUMN eventtype TYPE public.calendar_event_type
   USING eventtype::public.calendar_event_type;
-
 -- ─────────────────────────────────────────────
 -- 4. Add allday flag and optional class label
 --    (useful for full-day events like public holidays)
 -- ─────────────────────────────────────────────
 ALTER TABLE public.calendarevent
   ADD COLUMN IF NOT EXISTS allday BOOLEAN NOT NULL DEFAULT FALSE;
-
 ALTER TABLE public.calendarevent
   ADD COLUMN IF NOT EXISTS academicyearid UUID
     REFERENCES public.academicyear(academicyearid) ON DELETE SET NULL;
-
 -- Index for filtering by academic year
 CREATE INDEX IF NOT EXISTS idx_calendarevent_academicyearid
   ON public.calendarevent(academicyearid);
-
 -- ─────────────────────────────────────────────
 -- 5. Fix RLS — add ADMINISTRATOR role to management policies.
 --    Drop the old head-teacher policy and recreate it to include ADMINISTRATOR.
 -- ─────────────────────────────────────────────
 DROP POLICY IF EXISTS "head teacher can manage all events" ON public.calendarevent;
-
 CREATE POLICY "privileged roles can manage all events"
 ON public.calendarevent FOR ALL TO authenticated
 USING (

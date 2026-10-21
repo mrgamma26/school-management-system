@@ -5,8 +5,20 @@ import '../../../core/services/audit_service.dart';
 import '../domain/models/calendar_event.dart';
 
 /// Maps Supabase/database errors to [AppException] subtypes.
-AppException _mapException(Object error) {
-  final text = error.toString();
+AppException mapCalendarException(Object error) {
+  final text = error.toString().toLowerCase();
+
+  if (text.contains('pgrst202') ||
+      text.contains('pgrst204') ||
+      text.contains('42703') ||
+      text.contains('could not find the function') ||
+      text.contains('createdbyuser') ||
+      text.contains('schema cache')) {
+    return ServerException(
+      'Calendar setup is out of date. Apply the latest database migration '
+      'and try again.',
+    );
+  }
 
   // Permission/auth errors → ForbiddenException
   if (text.contains('permission') ||
@@ -19,7 +31,7 @@ AppException _mapException(Object error) {
 
   // Not found errors → NotFoundException
   if (text.contains('0 rows') ||
-      text.contains('PGRST116') ||
+      text.contains('pgrst116') ||
       text.contains('single()') ||
       text.contains('no rows')) {
     return NotFoundException('Resource not found.');
@@ -27,9 +39,9 @@ AppException _mapException(Object error) {
 
   // Network errors → NetworkException
   if (text.contains('network') ||
-      text.contains('SocketException') ||
-      text.contains('Connection refused') ||
-      text.contains('Connection reset')) {
+      text.contains('socketexception') ||
+      text.contains('connection refused') ||
+      text.contains('connection reset')) {
     return NetworkException(
       'Network error. Check your connection and try again.',
     );
@@ -103,7 +115,7 @@ class CalendarRepository {
           .single();
       return CalendarEvent.fromMap(row);
     } catch (e) {
-      throw _mapException(e);
+      throw mapCalendarException(e);
     }
   }
 
@@ -118,9 +130,12 @@ class CalendarRepository {
   }) async {
     _requireAdmin(actorRole);
     try {
+      final values = event.toInsertMap()
+        ..remove('createdby')
+        ..['createdbyuser'] = actorUserId;
       final inserted = await supabase
           .from(_table)
-          .insert(event.toInsertMap())
+          .insert(values)
           .select(_select)
           .single();
 
@@ -142,7 +157,7 @@ class CalendarRepository {
 
       return created;
     } catch (e) {
-      throw _mapException(e);
+      throw mapCalendarException(e);
     }
   }
 
@@ -191,7 +206,7 @@ class CalendarRepository {
 
       return result;
     } catch (e) {
-      throw _mapException(e);
+      throw mapCalendarException(e);
     }
   }
 
@@ -259,7 +274,7 @@ class CalendarRepository {
         params: {'events': events.map((e) => e.toInsertMap()).toList()},
       );
     } catch (e) {
-      throw _mapException(e);
+      throw mapCalendarException(e);
     }
   }
 }

@@ -73,7 +73,7 @@ class AuthRepository {
         throw UnauthorisedException('Authentication failed.');
       }
 
-      return loadCurrentUser();
+      return await loadCurrentUser();
     } catch (e) {
       if (e is AppException) rethrow;
       throw _mapException(e);
@@ -91,7 +91,7 @@ class AuthRepository {
       final row = await supabase
           .from('systemuser')
           .select(
-            'userid, username, roleid, mustchangepassword, isactive, role(rolename)',
+            'userid, username, roleid, mustchangepassword, isactive, role:role!fk_systemuser_role(rolename), user_roles:user_roles!user_roles_user_id_fkey(role_id, role:role_id(rolename))',
           )
           .eq('userid', user.id)
           .single();

@@ -10,7 +10,6 @@
 --
 -- STEP 1 — See what roles exist
 SELECT roleid, rolename FROM public.role ORDER BY rolename;
-
 -- STEP 2 — See which auth users already have a systemuser row
 SELECT
     u.id            AS auth_user_id,
@@ -20,7 +19,6 @@ SELECT
 FROM auth.users u
 LEFT JOIN public.systemuser su ON su.userid = u.id
 ORDER BY u.created_at;
-
 -- STEP 3 — Insert missing systemuser rows
 -- Edit the email → rolename pairs to match your actual test accounts.
 INSERT INTO public.systemuser (userid, username, roleid, mustchangepassword, isactive)
@@ -47,7 +45,6 @@ JOIN public.role r ON r.rolename = mapping.rolename
 WHERE NOT EXISTS (
     SELECT 1 FROM public.systemuser su WHERE su.userid = u.id
 );
-
 -- STEP 4 — Verify the result
 SELECT
     su.userid,

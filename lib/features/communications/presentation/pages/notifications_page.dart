@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../data/communications_repository.dart';
-import '../../../../core/services/audit_service.dart';
-import '../../../authentication/presentation/providers/auth_provider.dart';
-import '../../../../core/database/supabase_client.dart';
+
 import '../../../../core/auth/permission_helper.dart';
+import '../../../../core/auth/school_role_access.dart';
+import '../../../../core/database/supabase_client.dart';
+import '../../../../core/services/audit_service.dart';
+import '../../../../core/widgets/app_widgets.dart'
+    show ErrorState, LoadingState;
+import '../../../../widgets/ui_kit.dart';
+import '../../../authentication/presentation/providers/auth_provider.dart';
+import '../../data/communications_repository.dart';
 
 // ── Providers ─────────────────────────────────────────────────────────────────
 
@@ -12,7 +17,8 @@ final _notificationsProvider = FutureProvider<List<Map<String, dynamic>>>((
   ref,
 ) async {
   final permHelper = await ref.watch(permissionHelperProvider.future);
-  final isGuardian = permHelper?.has('notifications:view_own') ?? false;
+  final isGuardian =
+      permHelper != null && schoolRole(permHelper.roleName) == 'GUARDIAN';
   final uid = ref.watch(authProvider).user?.userId ?? '';
 
   List<dynamic> rows;
@@ -55,123 +61,209 @@ final _guardiansForSelectProvider = FutureProvider<List<Map<String, dynamic>>>((
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-/// Notifications page.
+/// Screens 51-52 - Notifications.
 /// Guardians: see their own notifications, mark as read.
 /// Staff / Admin: see all notifications, compose new ones.
-class NotificationsPage extends ConsumerWidget {
+class NotificationsPage extends ConsumerStatefulWidget {
   const NotificationsPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<NotificationsPage> createState() => _NotificationsPageState();
+}
+
+class _NotificationsPageState extends ConsumerState<NotificationsPage> {
+  static const _pageSize = 25;
+  String _filter = 'ALL'; // ALL | UNREAD | READ
+  int _page = 0;
+
+  @override
+  Widget build(BuildContext context) {
     final permHelperAsync = ref.watch(permissionHelperProvider);
     final canCompose = permHelperAsync.maybeWhen(
-      data: (perm) => perm?.isAtLeast(UserRole.staff) ?? false,
+      data: (perm) => perm != null && canSendNotifications(perm.roleName),
+      orElse: () => false,
+    );
+    final isGuardian = permHelperAsync.maybeWhen(
+      data: (perm) => perm != null && schoolRole(perm.roleName) == 'GUARDIAN',
       orElse: () => false,
     );
     final async = ref.watch(_notificationsProvider);
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Notifications')),
-      floatingActionButton: canCompose
-          ? FloatingActionButton.extended(
-              icon: const Icon(Icons.send),
-              label: const Text('Send Notification'),
-              onPressed: () => _showComposeDialog(context, ref),
-            )
-          : null,
-      body: async.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error loading notifications: $e')),
-        data: (notifications) {
-          if (notifications.isEmpty) {
-            return const Center(
-              child: Text(
-                'No notifications yet.',
-                style: TextStyle(color: Colors.grey),
+    return UiPage(
+      children: [
+        PageHead(
+          kicker: 'Communication',
+          title: 'Notifications',
+          subtitle: 'Role-appropriate in-app notices with read status.',
+          actions: [
+            UiButton.secondary(
+              'Refresh',
+              icon: Icons.refresh_rounded,
+              onPressed: () => ref.invalidate(_notificationsProvider),
+            ),
+            if (canCompose)
+              UiButton(
+                'Send Notification',
+                icon: Icons.send_outlined,
+                onPressed: () => _showComposeDialog(context, ref),
               ),
-            );
-          }
-          return ListView.separated(
-            padding: const EdgeInsets.all(12),
-            itemCount: notifications.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 8),
-            itemBuilder: (context, i) {
-              final n = notifications[i];
-              final isUnread = n['readstatus'] == 'UNREAD';
-              final guardian = n['guardian'] as Map<String, dynamic>?;
-              final sender = n['staff'] as Map<String, dynamic>?;
-              final isGuardian = permHelperAsync.maybeWhen(
-                data: (perm) => perm?.has('notifications:view_own') ?? false,
-                orElse: () => false,
-              );
-
-              return Card(
-                color: isUnread
-                    ? Theme.of(
-                        context,
-                      ).colorScheme.primary.withValues(alpha: 0.06)
-                    : null,
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: isUnread
-                        ? Colors.blue
-                        : Colors.grey.shade300,
-                    child: Icon(
-                      isUnread
-                          ? Icons.notifications_active
-                          : Icons.notifications,
-                      color: isUnread ? Colors.white : Colors.grey,
-                      size: 20,
-                    ),
-                  ),
-                  title: Text(
-                    n['subject'] as String,
-                    style: TextStyle(
-                      fontWeight: isUnread
-                          ? FontWeight.bold
-                          : FontWeight.normal,
-                    ),
-                  ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        n['message'] as String,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 2),
-                      if (guardian != null)
-                        Text(
-                          'To: ${guardian['firstname']} ${guardian['lastname']}',
-                          style: const TextStyle(fontSize: 11),
-                        ),
-                      if (sender != null)
-                        Text(
-                          'From: ${sender['firstname']} ${sender['lastname']}',
-                          style: const TextStyle(fontSize: 11),
-                        ),
-                    ],
-                  ),
-                  isThreeLine: true,
-                  trailing: isGuardian && isUnread
-                      ? TextButton(
-                          child: const Text('Mark Read'),
-                          onPressed: () async {
-                            await CommunicationsRepository().markRead(
-                              n['notificationid'] as String,
-                            );
-                            ref.invalidate(_notificationsProvider);
-                          },
-                        )
-                      : null,
-                  onTap: () => _showDetail(context, n),
+          ],
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final (value, label) in const [
+                ('ALL', 'All'),
+                ('UNREAD', 'Unread'),
+                ('READ', 'Read'),
+              ])
+                FilterChipBox(
+                  label,
+                  selected: _filter == value,
+                  onTap: () => setState(() {
+                    _filter = value;
+                    _page = 0;
+                  }),
+                ),
+            ],
+          ),
+        ),
+        async.when(
+          loading: () => const Padding(
+            padding: EdgeInsets.symmetric(vertical: 48),
+            child: LoadingState(message: 'Loading notifications…'),
+          ),
+          error: (e, _) => ErrorState(
+            error: e,
+            onRetry: () => ref.invalidate(_notificationsProvider),
+          ),
+          data: (all) {
+            final notifications = all.where((n) {
+              final unread = n['readstatus'] == 'UNREAD';
+              return switch (_filter) {
+                'UNREAD' => unread,
+                'READ' => !unread,
+                _ => true,
+              };
+            }).toList();
+            if (notifications.isEmpty) {
+              return const UiCard(
+                child: UiEmptyState(
+                  icon: Icons.notifications_none_rounded,
+                  title: 'No notifications',
+                  message: 'Nothing to show for this filter yet.',
                 ),
               );
-            },
-          );
-        },
-      ),
+            }
+            final pageCount = (notifications.length / _pageSize).ceil();
+            final page = _page.clamp(0, pageCount - 1);
+            final visible = PagerBar.slice(notifications, page, _pageSize);
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                DataTableCard(
+                  columns: [
+                    const UiColumn('Notice', flex: 20),
+                    const UiColumn('Recipient / sender', flex: 12, hideOnPhone: true),
+                    const UiColumn('Sent', flex: 8, hideOnPhone: true),
+                    const UiColumn('Status', flex: 8),
+                    UiColumn(isGuardian ? 'Action' : '', width: 100),
+                  ],
+                  rows: [
+                    for (final n in visible) _row(context, n, isGuardian),
+                  ],
+                ),
+                PagerBar(
+                  total: notifications.length,
+                  page: page,
+                  pageSize: _pageSize,
+                  onPage: (p) => setState(() => _page = p),
+                ),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  UiTableRow _row(
+    BuildContext context,
+    Map<String, dynamic> n,
+    bool isGuardian,
+  ) {
+    final isUnread = n['readstatus'] == 'UNREAD';
+    final guardian = n['guardian'] as Map<String, dynamic>?;
+    final sender = n['staff'] as Map<String, dynamic>?;
+    return UiTableRow(
+      [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              n['subject'] as String,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: isUnread ? FontWeight.w900 : FontWeight.w700,
+              ),
+            ),
+            Text(
+              n['message'] as String,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF64758B),
+              ),
+            ),
+          ],
+        ),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (guardian != null)
+              UiCellText('To ${guardian['firstname']} ${guardian['lastname']}'),
+            if (sender != null)
+              Text(
+                'From ${sender['firstname']} ${sender['lastname']}',
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF64758B),
+                ),
+              ),
+          ],
+        ),
+        UiCellText(
+          formatUiDate(DateTime.tryParse('${n['createdat']}')?.toLocal()),
+        ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: isUnread
+              ? const StatusPill('Unread', tone: StatusTone.info)
+              : const StatusPill('Read', tone: StatusTone.neutral),
+        ),
+        isGuardian && isUnread
+            ? TextButton(
+                child: const Text('Mark read'),
+                onPressed: () async {
+                  await CommunicationsRepository().markRead(
+                    n['notificationid'] as String,
+                  );
+                  ref.invalidate(_notificationsProvider);
+                },
+              )
+            : const SizedBox.shrink(),
+      ],
+      onTap: () => _showDetail(context, n),
     );
   }
 
@@ -213,7 +305,6 @@ class NotificationsPage extends ConsumerWidget {
                     data: (guardians) => DropdownButtonFormField<String>(
                       decoration: const InputDecoration(
                         labelText: 'To (Guardian) *',
-                        border: OutlineInputBorder(),
                       ),
                       items: guardians
                           .map(
@@ -229,10 +320,7 @@ class NotificationsPage extends ConsumerWidget {
                   const SizedBox(height: 12),
                   TextField(
                     controller: subjectCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Subject *',
-                      border: OutlineInputBorder(),
-                    ),
+                    decoration: const InputDecoration(labelText: 'Subject *'),
                   ),
                   const SizedBox(height: 12),
                   TextField(
@@ -240,7 +328,6 @@ class NotificationsPage extends ConsumerWidget {
                     maxLines: 4,
                     decoration: const InputDecoration(
                       labelText: 'Message *',
-                      border: OutlineInputBorder(),
                       alignLabelWithHint: true,
                     ),
                   ),

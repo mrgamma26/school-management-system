@@ -45,9 +45,14 @@ dependencies:
   printing: ^5.12.0
   csv: ^5.1.1
   path_provider: ^2.1.1
+  file_picker: ^13.1.0
 
   # Form state persistence
   shared_preferences: ^2.2.2
+
+  # Nunito typeface used by the approved design
+  google_fonts: ^6.2.1
+  url_launcher: ^6.3.3
 
 dev_dependencies:
   flutter_test:

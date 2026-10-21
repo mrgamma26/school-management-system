@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/database/supabase_client.dart';
 import '../../../authentication/presentation/providers/auth_provider.dart';
 import '../../../../core/services/export_service.dart';
+import '../../../../widgets/ui_kit.dart';
+import '../widgets/guardian_report_gate.dart';
 
 // ── FIX 10: Report Card View for Guardians ────────────────────────────────────
 // Displays academic performance aggregated across all three terms for each
@@ -67,7 +69,8 @@ final _reportCardDataProvider =
         if (ay == null) continue;
 
         final year = ay['academicyear'] as int;
-        final term = ay['term'] as String;
+        // The database stores TERM_1 / TERM_2 / TERM_3; this page orders and labels by TERM1 / TERM2 / TERM3.
+        final term = (ay['term'] as String).replaceAll('_', '');
         final subject = cs['subject'] as Map<String, dynamic>?;
         final subjectName = subject?['subjectname'] as String? ?? 'Unknown';
 
@@ -109,8 +112,11 @@ class _GuardianReportCardPageState
   Widget build(BuildContext context) {
     final childrenAsync = ref.watch(_reportCardChildrenProvider);
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Report Card'), actions: const []),
+    return PageFrame(
+      kicker: 'Guardian · Results',
+      title: 'Student Report Card',
+      subtitle:
+          'School-branded report with teacher comments. Withheld while a balance is outstanding.',
       body: childrenAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text(friendlyError(e))),
@@ -190,9 +196,12 @@ class _GuardianReportCardPageState
                           style: TextStyle(color: Colors.grey),
                         ),
                       )
-                    : _ReportCardView(
+                    : GuardianReportGate(
                         studentId: _studentId!,
-                        studentName: _studentName!,
+                        child: GuardianReportCardView(
+                          studentId: _studentId!,
+                          studentName: _studentName!,
+                        ),
                       ),
               ),
             ],
@@ -205,11 +214,15 @@ class _GuardianReportCardPageState
 
 // ── Report card view ──────────────────────────────────────────────────────────
 
-class _ReportCardView extends ConsumerWidget {
+class GuardianReportCardView extends ConsumerWidget {
   final String studentId;
   final String studentName;
 
-  const _ReportCardView({required this.studentId, required this.studentName});
+  const GuardianReportCardView({
+    super.key,
+    required this.studentId,
+    required this.studentName,
+  });
 
   /// Generate PDF-exportable rows from report card data
   List<List<String>> _generatePdfRows(Map<int, Map<String, dynamic>> byYear) {

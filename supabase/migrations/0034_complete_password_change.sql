@@ -1,7 +1,6 @@
 -- Lets an authenticated user complete their own forced-password-change flow
 -- without granting them permission to alter any other systemuser field.
 BEGIN;
-
 CREATE OR REPLACE FUNCTION public.complete_current_user_password_change()
 RETURNS void
 LANGUAGE plpgsql
@@ -18,8 +17,6 @@ BEGIN
   END IF;
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.complete_current_user_password_change() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.complete_current_user_password_change() TO authenticated;
-
 COMMIT;

@@ -17,7 +17,6 @@ CREATE TABLE IF NOT EXISTS public.feestructure (
   -- One fee type per class per academic year
   UNIQUE (classid, academicyearid, feetype)
 );
-
 -- ─────────────────────────────────────────────
 -- payment
 -- Records a fee payment made by/for a student.
@@ -35,7 +34,6 @@ CREATE TABLE IF NOT EXISTS public.payment (
   createdat       TIMESTAMPTZ   NOT NULL DEFAULT now(),
   updatedat       TIMESTAMPTZ   NOT NULL DEFAULT now()
 );
-
 -- ─────────────────────────────────────────────
 -- financialadjustment
 -- Discounts, waivers or penalties applied to a student's account.

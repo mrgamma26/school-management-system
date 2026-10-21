@@ -98,7 +98,7 @@ class ProgressionRepository {
   Future<String> nextAcademicPeriod(String sourcePeriodId) async {
     final source = await supabase
         .from('academicyear')
-        .select('academicyear')
+        .select('academicyear, form')
         .eq('academicyearid', sourcePeriodId)
         .single();
     final sourceForm = source['form']?.toString();

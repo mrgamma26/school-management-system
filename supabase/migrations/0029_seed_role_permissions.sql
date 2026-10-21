@@ -189,7 +189,6 @@ BEGIN
   -- GUEST has no explicit permissions; access is controlled at the RLS level.
 
 END $$;
-
 -- Verify permissions were seeded
 SELECT
   r.rolename,

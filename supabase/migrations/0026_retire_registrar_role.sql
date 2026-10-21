@@ -59,14 +59,12 @@ BEGIN
     END IF;
   END LOOP;
 END $$;
-
 -- The legacy role has no live users. Remove any leftover role permissions and
 -- the role row itself so it cannot be assigned again.
 DELETE FROM public.rolepermission
 WHERE roleid IN (
   SELECT roleid FROM public.role WHERE upper(rolename) = 'REGISTRAR'
 );
-
 DELETE FROM public.role
 WHERE upper(rolename) = 'REGISTRAR'
   AND NOT EXISTS (

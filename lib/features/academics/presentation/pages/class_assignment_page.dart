@@ -2,6 +2,7 @@ import 'package:school_management_app/features/academics/domain/models/academic_
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
 import '../../data/academic_repository.dart';
 import '../../domain/models/class_subject.dart';
 import '../../../../core/database/supabase_client.dart';
@@ -29,7 +30,8 @@ final _assignmentsProvider =
       ({String yearId, String? userId, String? roleName})
     >((ref, args) async {
       // If roleName is TEACHER and userId is provided, scope to that teacher
-      if (args.roleName?.toUpperCase() == 'TEACHER' && args.userId != null) {
+      if ({'TEACHER', 'HEAD_TEACHER'}.contains(args.roleName?.toUpperCase()) &&
+          args.userId != null) {
         final staff = await supabase
             .from('staff')
             .select('staffid')
@@ -192,7 +194,7 @@ class _ClassAssignmentPageState extends ConsumerState<ClassAssignmentPage> {
   Widget build(BuildContext context) {
     final user = ref.watch(authProvider).user;
     final roleName = user?.roleName.trim().toUpperCase();
-    final isTeacher = roleName == 'TEACHER';
+    final isTeacher = {'TEACHER', 'HEAD_TEACHER'}.contains(roleName);
 
     if (isTeacher) {
       return Scaffold(
@@ -244,54 +246,107 @@ class _ClassAssignmentPageState extends ConsumerState<ClassAssignmentPage> {
           ],
         ),
         error: (e, _) => Center(child: Text('Error: $e')),
-        data: (years) => Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: DropdownButtonFormField<String>(
-                initialValue: _yearId,
-                decoration: const InputDecoration(
-                  labelText: 'Academic Year',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.calendar_today),
-                ),
-                hint: const Text('Select academic year'),
-                items: years.map((y) {
-                  final id = y['academicyearid'] as String;
-                  final label =
-                      '${formatAcademicYear(y['academicyear'])} • ${formatFormLevel(y['form']?.toString())} • ${y['term'].toString().replaceAll('_', ' ')}';
-                  return DropdownMenuItem(value: id, child: Text(label));
-                }).toList(),
-                onChanged: (v) {
-                  final selected = years.firstWhere(
-                    (year) => year['academicyearid'] == v,
-                  );
-                  setState(() {
-                    _yearId = v;
-                    _yearForm = selected['form']?.toString();
-                  });
-                },
-              ),
-            ),
-            Expanded(
-              child: _yearId == null
-                  ? const Center(
-                      child: Text(
-                        'Select a year to view assignments',
-                        style: TextStyle(color: Colors.grey),
-                      ),
-                    )
-                  : _AssignmentList(
-                      yearId: _yearId!,
-                      canManage: canManage,
-                      userId: user?.userId,
-                      roleName: user?.roleName,
+        data: (years) {
+          final configuredYears = years
+              .where(
+                (year) => year['form']?.toString().trim().isNotEmpty == true,
+              )
+              .toList();
+
+          if (configuredYears.isEmpty) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.calendar_month_outlined, size: 48),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'No form-specific academic years are configured.',
+                      textAlign: TextAlign.center,
                     ),
-            ),
-          ],
-        ),
+                    if (canManage) ...[
+                      const SizedBox(height: 16),
+                      FilledButton.icon(
+                        onPressed: _createAcademicYear,
+                        icon: const Icon(Icons.add),
+                        label: const Text('Create Academic Year'),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            );
+          }
+
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: DropdownButtonFormField<String>(
+                  initialValue: _yearId,
+                  decoration: const InputDecoration(
+                    labelText: 'Academic Year',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.calendar_today),
+                  ),
+                  hint: const Text('Select academic year'),
+                  items: configuredYears.map((y) {
+                    final id = y['academicyearid'] as String;
+                    final label =
+                        '${formatAcademicYear(y['academicyear'])} • ${formatFormLevel(y['form']?.toString())} • ${y['term'].toString().replaceAll('_', ' ')}';
+                    return DropdownMenuItem(value: id, child: Text(label));
+                  }).toList(),
+                  onChanged: (v) {
+                    final selected = configuredYears.firstWhere(
+                      (year) => year['academicyearid'] == v,
+                    );
+                    setState(() {
+                      _yearId = v;
+                      _yearForm = selected['form']?.toString();
+                    });
+                  },
+                ),
+              ),
+              Expanded(
+                child: _yearId == null
+                    ? const Center(
+                        child: Text(
+                          'Select a year to view assignments',
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      )
+                    : _AssignmentList(
+                        yearId: _yearId!,
+                        canManage: canManage,
+                        userId: user?.userId,
+                        roleName: user?.roleName,
+                      ),
+              ),
+            ],
+          );
+        },
       ),
     );
+  }
+
+  Future<void> _createAcademicYear() async {
+    await context.push('/academics/years/new');
+    if (!mounted) return;
+    ref.invalidate(_assignmentYearsProvider);
+  }
+
+  Future<void> _createClassForSelectedForm(BuildContext dialogContext) async {
+    final form = _yearForm;
+    Navigator.of(dialogContext).pop();
+    if (form == null) return;
+
+    await context.push(
+      '/academics/classes/new?form=${Uri.encodeQueryComponent(form)}',
+    );
+    if (!mounted) return;
+    ref.invalidate(_allClassesProvider);
   }
 
   Future<void> _showAssignDialog() async {
@@ -305,10 +360,10 @@ class _ClassAssignmentPageState extends ConsumerState<ClassAssignmentPage> {
     await showDialog(
       context: context,
       builder: (ctx) => Consumer(
-        builder: (ctx, ref, _) {
-          final classesAsync = ref.watch(_allClassesProvider);
-          final subjectsAsync = ref.watch(_allSubjectsProvider);
-          final staffListAsync = ref.watch(_teachersProvider);
+        builder: (ctx, dialogRef, _) {
+          final classesAsync = dialogRef.watch(_allClassesProvider);
+          final subjectsAsync = dialogRef.watch(_allSubjectsProvider);
+          final staffListAsync = dialogRef.watch(_teachersProvider);
 
           return AlertDialog(
             title: const Text('Add Class Assignment'),
@@ -321,13 +376,33 @@ class _ClassAssignmentPageState extends ConsumerState<ClassAssignmentPage> {
                     loading: () => const LinearProgressIndicator(),
                     error: (e, _) => Text('Error: $e'),
                     data: (classes) {
+                      final selectedForm = _yearForm?.trim().toUpperCase();
                       final matchingClasses = classes
-                          .where((c) => c['form']?.toString() == _yearForm)
+                          .where(
+                            (c) =>
+                                c['form']?.toString().trim().toUpperCase() ==
+                                selectedForm,
+                          )
                           .toList();
                       if (matchingClasses.isEmpty) {
-                        return Text(
-                          'No ${formatFormLevel(_yearForm)} classes are configured.',
-                          style: const TextStyle(color: Colors.red),
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'No ${formatFormLevel(_yearForm)} classes are configured.',
+                              style: TextStyle(
+                                color: Theme.of(ctx).colorScheme.error,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            OutlinedButton.icon(
+                              onPressed: () => _createClassForSelectedForm(ctx),
+                              icon: const Icon(Icons.add),
+                              label: Text(
+                                'Create ${formatFormLevel(_yearForm)} Class',
+                              ),
+                            ),
+                          ],
                         );
                       }
                       return DropdownButtonFormField<String>(
@@ -420,7 +495,7 @@ class _ClassAssignmentPageState extends ConsumerState<ClassAssignmentPage> {
                       academicYearId: _yearId!,
                     );
 
-                    final actor = ref.read(authProvider).user!;
+                    final actor = dialogRef.read(authProvider).user!;
                     await AuditService().log(
                       userId: actor.userId,
                       action: 'TEACHER_ASSIGNED',
@@ -444,9 +519,9 @@ class _ClassAssignmentPageState extends ConsumerState<ClassAssignmentPage> {
                     return;
                   }
 
-                  final user = ref.read(authProvider).user!;
+                  final user = dialogRef.read(authProvider).user!;
                   // Invalidate assignments provider to refresh the list
-                  ref.invalidate(
+                  dialogRef.invalidate(
                     _assignmentsProvider((
                       yearId: _yearId!,
                       userId: user.userId,
@@ -454,7 +529,7 @@ class _ClassAssignmentPageState extends ConsumerState<ClassAssignmentPage> {
                     )),
                   );
                   // Also invalidate subjects provider in case it was updated
-                  ref.invalidate(_allSubjectsProvider);
+                  dialogRef.invalidate(_allSubjectsProvider);
                   if (ctx.mounted) Navigator.pop(ctx);
                 },
                 child: const Text('Assign'),
@@ -601,7 +676,7 @@ class _AssignmentList extends ConsumerWidget {
             return Card(
               child: ListTile(
                 leading: const CircleAvatar(
-                  backgroundColor: Colors.indigo,
+                  backgroundColor: Color(0xFF1565C0),
                   child: Icon(
                     Icons.assignment_ind,
                     color: Colors.white,

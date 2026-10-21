@@ -6,6 +6,7 @@ import '../../academics/data/academic_repository.dart';
 import '../../academics/domain/models/academic_year.dart';
 import '../../academics/domain/models/class_model.dart';
 import '../../authentication/presentation/providers/auth_provider.dart';
+import '../../../widgets/ui_kit.dart';
 import '../data/student_repository.dart';
 
 final _promotionYearsProvider = FutureProvider<List<AcademicYear>>((ref) {
@@ -163,116 +164,106 @@ class _PromoteStudentPageState extends ConsumerState<PromoteStudentPage> {
       orElse: () => true,
     );
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Promote / Move Class')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+    final saveEnabled =
+        !(blocked || _saving || _selectedYear == null || _selectedClass == null);
+    final blockMessage = blockAsync.maybeWhen(
+      data: (message) => message,
+      orElse: () => null,
+    );
+
+    return FormPageLayout(
+      kicker: 'Students',
+      title: 'Promote / Move Class',
+      subtitle: 'Place this learner in a class for an academic period.',
+      formTitle: 'Class placement',
+      saveLabel: 'Save Class Placement',
+      saving: _saving,
+      onSave: saveEnabled ? _submit : null,
+      error: blockMessage,
+      form: FieldGrid(
         children: [
-          blockAsync.maybeWhen(
-            data: (message) => message != null
-                ? Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.red.shade50,
-                      border: Border.all(color: Colors.red.shade200),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.block, color: Colors.red),
-                        const SizedBox(width: 8),
-                        Expanded(child: Text(message)),
-                      ],
-                    ),
-                  )
-                : const SizedBox.shrink(),
-            orElse: () => const SizedBox.shrink(),
-          ),
-          const SizedBox(height: 12),
-          yearsAsync.when(
-            loading: () => const LinearProgressIndicator(),
-            error: (error, _) => Text('Could not load academic years: $error'),
-            data: (years) => DropdownButtonFormField<AcademicYear>(
-              initialValue: _selectedYear,
-              decoration: const InputDecoration(
-                labelText: 'Academic year / term',
-                prefixIcon: Icon(Icons.calendar_today),
+          FullWidth(
+            child: UiField(
+              label: 'Academic year / term',
+              child: yearsAsync.when(
+                loading: () => const LinearProgressIndicator(),
+                error: (error, _) =>
+                    Text('Could not load academic years: $error'),
+                data: (years) => DropdownButtonFormField<AcademicYear>(
+                  initialValue: _selectedYear,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    hintText: 'Select academic year and term',
+                  ),
+                  items: years
+                      .map(
+                        (year) => DropdownMenuItem(
+                          value: year,
+                          child: Text(
+                            '${year.label} • ${formatFormLevel(year.form)} • ${year.term.replaceAll('_', ' ')}',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: blocked
+                      ? null
+                      : (value) => setState(() {
+                          _selectedYear = value;
+                          _selectedClass = null;
+                        }),
+                ),
               ),
-              items: years
-                  .map(
-                    (year) => DropdownMenuItem(
-                      value: year,
-                      child: Text(
-                        '${year.label} • ${formatFormLevel(year.form)} • ${year.term.replaceAll('_', ' ')}',
+            ),
+          ),
+          UiField(
+            label: 'New class',
+            child: classesAsync.when(
+              loading: () => const LinearProgressIndicator(),
+              error: (error, _) => Text('Could not load classes: $error'),
+              data: (classes) => DropdownButtonFormField<ClassModel>(
+                initialValue: _selectedClass,
+                isExpanded: true,
+                decoration: const InputDecoration(hintText: 'Select class'),
+                items: classes
+                    .where(
+                      (classModel) => classModel.form == _selectedYear?.form,
+                    )
+                    .map(
+                      (classModel) => DropdownMenuItem(
+                        value: classModel,
+                        child: Text(classModel.className),
                       ),
-                    ),
-                  )
-                  .toList(),
-              onChanged: blocked
-                  ? null
-                  : (value) => setState(() {
-                      _selectedYear = value;
-                      _selectedClass = null;
-                    }),
-            ),
-          ),
-          const SizedBox(height: 16),
-          classesAsync.when(
-            loading: () => const LinearProgressIndicator(),
-            error: (error, _) => Text('Could not load classes: $error'),
-            data: (classes) => DropdownButtonFormField<ClassModel>(
-              initialValue: _selectedClass,
-              decoration: const InputDecoration(
-                labelText: 'New class',
-                prefixIcon: Icon(Icons.class_outlined),
+                    )
+                    .toList(),
+                onChanged: blocked || _selectedYear == null
+                    ? null
+                    : (value) => setState(() => _selectedClass = value),
               ),
-              items: classes
-                  .where((classModel) => classModel.form == _selectedYear?.form)
-                  .map(
-                    (classModel) => DropdownMenuItem(
-                      value: classModel,
-                      child: Text(classModel.className),
-                    ),
-                  )
-                  .toList(),
-              onChanged: blocked || _selectedYear == null
-                  ? null
-                  : (value) => setState(() => _selectedClass = value),
             ),
           ),
-          const SizedBox(height: 16),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.event),
-            title: const Text('Enrollment date'),
-            subtitle: Text(_dateLabel(_enrollmentDate)),
-            trailing: TextButton(
-              onPressed: _pickDate,
-              child: const Text('Change'),
+          UiField(
+            label: 'Enrollment date',
+            child: Row(
+              children: [
+                Expanded(child: UiCellText(formatUiDate(_enrollmentDate))),
+                UiButton.secondary('Change', onPressed: _pickDate),
+              ],
             ),
-          ),
-          const SizedBox(height: 24),
-          FilledButton.icon(
-            onPressed:
-                blocked ||
-                    _saving ||
-                    _selectedYear == null ||
-                    _selectedClass == null
-                ? null
-                : _submit,
-            icon: _saving
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.check),
-            label: const Text('Save Class Placement'),
           ),
         ],
       ),
+      side: [
+        CheckRow(
+          label: 'Academic period chosen',
+          checked: _selectedYear != null,
+        ),
+        CheckRow(label: 'Class chosen', checked: _selectedClass != null),
+        CheckRow(
+          label: 'No pending progression review',
+          checked: !blocked,
+        ),
+      ],
     );
   }
-
-  String _dateLabel(DateTime date) => date.toIso8601String().substring(0, 10);
 }

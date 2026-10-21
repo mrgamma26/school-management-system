@@ -13,7 +13,6 @@ AS $$
   WHERE su.userid = auth.uid()
     AND su.isactive = true
 $$;
-
 DROP POLICY IF EXISTS "admins manage academic years" ON public.academicyear;
 CREATE POLICY "admins manage academic years"
 ON public.academicyear FOR ALL TO authenticated

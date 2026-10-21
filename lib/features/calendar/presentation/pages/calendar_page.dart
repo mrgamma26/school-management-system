@@ -8,6 +8,8 @@ import '../../../authentication/presentation/providers/auth_provider.dart';
 import '../../../../core/auth/school_role_access.dart';
 import 'calendar_event_form_page.dart';
 import '../../../../widgets/skeleton_loader.dart';
+import '../../../../theme/app_tokens.dart';
+import '../../../../widgets/ui_kit.dart';
 
 // ── Providers ─────────────────────────────────────────────────────────────────
 
@@ -20,9 +22,18 @@ class CalendarPage extends ConsumerStatefulWidget {
   ConsumerState<CalendarPage> createState() => _CalendarPageState();
 }
 
+/// Page width from which the event editor sits beside the month grid instead
+/// of opening in a dialog (administrators only; other roles keep the dialog).
+const double calendarSidePanelBreakpoint = 1100;
+
 class _CalendarPageState extends ConsumerState<CalendarPage> {
   late DateTime _focusedMonth;
   DateTime? _selectedDay;
+
+  // Side-panel editor (wide layouts, administrators).
+  DateTime? _panelDay;
+  CalendarEvent? _panelEvent;
+  int _panelEpoch = 0;
 
   @override
   void initState() {
@@ -194,12 +205,42 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
   void _prevMonth() => setState(() {
     _focusedMonth = DateTime(_focusedMonth.year, _focusedMonth.month - 1);
     _selectedDay = null;
+    _panelDay = null;
+    _panelEvent = null;
   });
 
   void _nextMonth() => setState(() {
     _focusedMonth = DateTime(_focusedMonth.year, _focusedMonth.month + 1);
     _selectedDay = null;
+    _panelDay = null;
+    _panelEvent = null;
   });
+
+  /// Select [day] and show its editor in the side panel.
+  void _openPanel(DateTime day, {CalendarEvent? editing}) => setState(() {
+    _selectedDay = day;
+    _panelDay = day;
+    _panelEvent = editing;
+    _panelEpoch++;
+  });
+
+  void _closePanel() => setState(() {
+    _panelDay = null;
+    _panelEvent = null;
+    _panelEpoch++;
+  });
+
+  void _onPanelFinished(bool saved) {
+    if (saved) {
+      ref.invalidate(calendarMonthProvider);
+      setState(() {
+        _panelEvent = null;
+        _panelEpoch++;
+      });
+    } else {
+      _closePanel();
+    }
+  }
 
   List<CalendarEvent> _eventsForDay(List<CalendarEvent> all, DateTime day) {
     return all.where((e) {
@@ -228,101 +269,283 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
     // Only admins can manage (edit/delete) events
     final canManage = canCreateEvent;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('School Calendar'),
-        actions: [
-          if (_selectedDay != null)
-            IconButton(
-              icon: const Icon(Icons.event_note),
-              tooltip: 'View day events',
-              onPressed: () => _showDayDetails(
-                _selectedDay!,
-                async.asData?.value ?? [],
-                canManage: canManage,
-              ),
-            ),
-          IconButton(
-            icon: const Icon(Icons.today),
-            tooltip: 'Today',
-            onPressed: () {
-              final now = DateTime.now();
-              setState(() {
-                _focusedMonth = DateTime(now.year, now.month);
-                _selectedDay = DateTime(now.year, now.month, now.day);
-              });
-            },
-          ),
-        ],
-      ),
-      floatingActionButton: canCreateEvent
-          ? FloatingActionButton.extended(
-              icon: const Icon(Icons.add),
-              label: const Text('Add Event'),
-              onPressed: () => _openEditor(_selectedDay ?? DateTime.now()),
-            )
-          : null,
-      body: async.when(
-        loading: () => Column(
-          children: [
-            _Legend(),
-            const Divider(height: 1),
-            _MonthHeaderSkeleton(),
-            const Divider(height: 1),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.all(12),
-                children: List.generate(
-                  3,
-                  (i) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: SkeletonCard(height: 80),
-                  ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Wide layouts give administrators the editor beside the month grid.
+        // Everyone else, and narrower layouts, keep the day dialog.
+        final sidePanel =
+            canManage && constraints.maxWidth >= calendarSidePanelBreakpoint;
+        return PageFrame(
+          kicker: 'Communication',
+          title: 'School Calendar',
+          subtitle: sidePanel
+              ? 'Select a date to add or edit its events in the panel beside the calendar.'
+              : 'Date-led calendar with visible event markers for authorized viewers.',
+          actions: [
+            if (_selectedDay != null && !sidePanel)
+              UiButton.secondary(
+                'Day events',
+                icon: Icons.event_note_outlined,
+                onPressed: () => _showDayDetails(
+                  _selectedDay!,
+                  async.asData?.value ?? [],
+                  canManage: canManage,
                 ),
               ),
+            UiButton.secondary(
+              'Today',
+              icon: Icons.today_outlined,
+              onPressed: () {
+                final now = DateTime.now();
+                setState(() {
+                  _focusedMonth = DateTime(now.year, now.month);
+                  _selectedDay = DateTime(now.year, now.month, now.day);
+                });
+              },
             ),
-          ],
-        ),
-        error: (e, _) => Center(child: Text('Error loading calendar: $e')),
-        data: (events) => Column(
-          children: [
-            // ── Legend ────────────────────────────────────────
-            _Legend(),
-            const Divider(height: 1),
-
-            // ── Month header + navigation ──────────────────────
-            _MonthHeader(
-              focusedMonth: _focusedMonth,
-              onPrev: _prevMonth,
-              onNext: _nextMonth,
-            ),
-
-            // ── Day-of-week labels ─────────────────────────────
-            _WeekdayRow(),
-
-            // ── Month grid (non-scrollable, fixed height) ──────
-            SizedBox(
-              height: 280,
-              child: _MonthGrid(
-                focusedMonth: _focusedMonth,
-                events: events,
-                selectedDay: _selectedDay,
-                eventsForDay: _eventsForDay,
-                isSameDay: _isSameDay,
-                onDayTap: (day) {
-                  setState(() => _selectedDay = day);
-                  _showDayDetails(day, events, canManage: canManage);
+            if (canCreateEvent)
+              UiButton(
+                'Add Event',
+                icon: Icons.add_rounded,
+                onPressed: () {
+                  final day = _selectedDay ?? DateTime.now();
+                  sidePanel ? _openPanel(day) : _openEditor(day);
                 },
-                onDayLongPress: (day) =>
-                    _showDayDetails(day, events, canManage: canManage),
               ),
-            ),
-
-            const Divider(height: 1),
-
-            const SizedBox(height: 8),
           ],
+          body: async.when(
+            loading: () => Column(
+              children: [
+                _Legend(),
+                const Divider(height: 1),
+                _MonthHeaderSkeleton(),
+                const Divider(height: 1),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.all(12),
+                    children: List.generate(
+                      3,
+                      (i) => Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: SkeletonCard(height: 80),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            error: (e, _) => Center(child: Text('Error loading calendar: $e')),
+            data: (events) => SingleChildScrollView(
+              child: sidePanel
+                  ? Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: _monthCard(
+                            events,
+                            canManage: canManage,
+                            sidePanel: true,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        SizedBox(width: 400, child: _sidePanel(events)),
+                      ],
+                    )
+                  : _monthCard(events, canManage: canManage, sidePanel: false),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _monthCard(
+    List<CalendarEvent> events, {
+    required bool canManage,
+    required bool sidePanel,
+  }) {
+    return UiCard(
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          // ── Legend ────────────────────────────────────────
+          _Legend(),
+          const Divider(height: 1),
+
+          // ── Month header + navigation ──────────────────────
+          _MonthHeader(
+            focusedMonth: _focusedMonth,
+            onPrev: _prevMonth,
+            onNext: _nextMonth,
+          ),
+
+          // ── Day-of-week labels ─────────────────────────────
+          _WeekdayRow(),
+
+          // ── Month grid (non-scrollable, fixed height) ──────
+          SizedBox(
+            height: sidePanel ? 400 : 280,
+            child: _MonthGrid(
+              focusedMonth: _focusedMonth,
+              events: events,
+              selectedDay: _selectedDay,
+              eventsForDay: _eventsForDay,
+              isSameDay: _isSameDay,
+              onDayTap: (day) {
+                if (sidePanel) {
+                  _openPanel(day);
+                  return;
+                }
+                setState(() => _selectedDay = day);
+                _showDayDetails(day, events, canManage: canManage);
+              },
+              onDayLongPress: (day) {
+                if (sidePanel) {
+                  _openPanel(day);
+                  return;
+                }
+                _showDayDetails(day, events, canManage: canManage);
+              },
+            ),
+          ),
+
+          const Divider(height: 1),
+
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+
+  /// Editor beside the month grid: the selected date's events plus the same
+  /// event form the dialog and standalone route use (same repository calls).
+  Widget _sidePanel(List<CalendarEvent> events) {
+    final day = _panelDay;
+    if (day == null) {
+      return const UiCard(
+        child: UiEmptyState(
+          icon: Icons.event_outlined,
+          title: 'Select a date',
+          message:
+              'The event editor opens here, beside the calendar. Dates that already have events are marked.',
         ),
+      );
+    }
+    final localizations = MaterialLocalizations.of(context);
+    final dayEvents = _eventsForDay(events, day);
+    final editing = _panelEvent;
+    return UiCard(
+      key: const ValueKey('calendar-side-panel'),
+      padding: EdgeInsets.zero,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        localizations.formatFullDate(day),
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      Text(
+                        editing != null
+                            ? 'Editing event'
+                            : dayEvents.isEmpty
+                            ? 'No events yet - add the first one'
+                            : '${dayEvents.length} event${dayEvents.length == 1 ? '' : 's'} on this date',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Close editor',
+                  icon: const Icon(Icons.close_rounded),
+                  onPressed: _closePanel,
+                ),
+              ],
+            ),
+          ),
+          if (dayEvents.isNotEmpty) ...[
+            const Divider(height: 1),
+            for (final event in dayEvents)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            event.eventName,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          Text(
+                            '${event.allDay ? 'All day' : localizations.formatTimeOfDay(TimeOfDay.fromDateTime(event.startTime))} · ${event.eventType.label}',
+                            style: const TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => _openPanel(day, editing: event),
+                      child: const Text('Edit'),
+                    ),
+                    TextButton(
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.danger,
+                      ),
+                      onPressed: () async {
+                        final deleted = await _confirmDelete(event);
+                        if (deleted &&
+                            mounted &&
+                            _panelEvent?.eventId == event.eventId) {
+                          setState(() {
+                            _panelEvent = null;
+                            _panelEpoch++;
+                          });
+                        }
+                      },
+                      child: const Text('Delete'),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+          const Divider(height: 1),
+          SizedBox(
+            height: 660,
+            child: CalendarEventFormPage(
+              key: ValueKey(
+                'panel-$_panelEpoch-${day.year}-${day.month}-${day.day}-${editing?.eventId ?? 'new'}',
+              ),
+              existingEvent: editing,
+              initialDate: day,
+              onFinished: _onPanelFinished,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1191,7 +1414,7 @@ Color _eventColor(CalendarEventType type) => switch (type) {
   CalendarEventType.exam => Colors.orange.shade700,
   CalendarEventType.timetable => Colors.blue.shade600,
   CalendarEventType.schoolEvent => Colors.green.shade600,
-  CalendarEventType.termDate => Colors.purple.shade600,
+  CalendarEventType.termDate => AppColors.primaryDark,
 };
 
 // ── Skeleton loaders for loading states ────────────────────────────────────────

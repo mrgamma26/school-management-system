@@ -1,12 +1,10 @@
 -- Trusted three-term progression. This is forward-only and keeps the legacy
 -- grade attendance status separate from the new grade submission state.
 BEGIN;
-
 DO $$ BEGIN
   CREATE TYPE public.grade_submission_status AS ENUM ('DRAFT', 'SUBMITTED');
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
-
 -- The legacy enum cannot be safely extended and used in one forward migration.
 -- Convert the column to the canonical text values instead.
 ALTER TABLE public.progressionreview
@@ -19,10 +17,8 @@ ALTER TABLE public.progressionreview
   DROP CONSTRAINT IF EXISTS progressionreview_decision_check,
   ADD CONSTRAINT progressionreview_decision_check
     CHECK (decision IN ('PENDING', 'PROMOTED', 'RETAINED'));
-
 ALTER TABLE public.grade
   ADD COLUMN IF NOT EXISTS submissionstatus public.grade_submission_status NOT NULL DEFAULT 'DRAFT';
-
 ALTER TABLE public.progressionreview
   ADD COLUMN IF NOT EXISTS schoolyear integer,
   ADD COLUMN IF NOT EXISTS decisionreason text,
@@ -30,7 +26,6 @@ ALTER TABLE public.progressionreview
   ADD COLUMN IF NOT EXISTS calculationsnapshot jsonb,
   ADD COLUMN IF NOT EXISTS targetacademicyearid uuid REFERENCES public.academicyear(academicyearid),
   ADD COLUMN IF NOT EXISTS targetclassid uuid REFERENCES public.class(classid);
-
 -- Existing rows remain historical term reviews. New annual rows are unique.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_progressionreview_annual
   ON public.progressionreview(studentid, schoolyear)
@@ -38,7 +33,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_progressionreview_annual
 CREATE UNIQUE INDEX IF NOT EXISTS uq_active_class_placement
   ON public.studentclasshistory(studentid, academicyearid)
   WHERE enddate IS NULL;
-
 CREATE TABLE IF NOT EXISTS public.progressionrule (
   ruleid uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   passpercentage numeric(5,2) NOT NULL DEFAULT 50 CHECK (passpercentage BETWEEN 0 AND 100),
@@ -49,7 +43,6 @@ CREATE TABLE IF NOT EXISTS public.progressionrule (
 INSERT INTO public.progressionrule (passpercentage, version)
 SELECT 50, 'v1'
 WHERE NOT EXISTS (SELECT 1 FROM public.progressionrule WHERE active);
-
 -- The result is a JSON document so Flutter cannot alter calculation evidence.
 CREATE OR REPLACE FUNCTION public.calculate_student_annual_result(
   p_student_id uuid,
@@ -136,7 +129,6 @@ BEGIN
       WHEN v_annual >= v_rule.passpercentage THEN 'PROMOTE' ELSE 'RETAIN' END
   );
 END $$;
-
 CREATE OR REPLACE FUNCTION public.refresh_progression_review(p_student_id uuid, p_school_year integer)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE v_result jsonb; v_period uuid; v_review uuid;
@@ -158,7 +150,6 @@ BEGIN
   END IF;
   RETURN v_result || jsonb_build_object('reviewId', v_review);
 END $$;
-
 CREATE OR REPLACE FUNCTION public.decide_and_place_student(
   p_review_id uuid, p_decision text, p_target_period_id uuid, p_reason text
 ) RETURNS jsonb
@@ -191,7 +182,6 @@ BEGIN
     VALUES (auth.uid(), p_review_id::text, public.current_app_role(), 'PROGRESSION_' || p_decision, 'progressionreview', jsonb_build_object('oldClassId', v_current.classid, 'newClassId', v_target_class, 'annualAverage', v_review.averagescore), p_reason);
   RETURN jsonb_build_object('reviewId', p_review_id, 'decision', p_decision, 'targetClassId', v_target_class);
 END $$;
-
 REVOKE ALL ON FUNCTION public.decide_and_place_student(uuid, text, uuid, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.calculate_student_annual_result(uuid, integer), public.refresh_progression_review(uuid, integer), public.decide_and_place_student(uuid, text, uuid, text) TO authenticated;
 NOTIFY pgrst, 'reload schema';

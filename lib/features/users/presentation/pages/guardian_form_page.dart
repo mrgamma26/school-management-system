@@ -1,12 +1,18 @@
 import 'package:flutter/material.dart';
-import '../../../../core/errors/app_exception.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../domain/models/guardian.dart';
-import '../../data/repositories/user_repository.dart';
-import '../../../authentication/presentation/providers/auth_provider.dart';
-import '../../../../core/services/audit_service.dart';
 
-/// Edit an existing guardian account. New guardians are registered with students.
+import '../../../../core/errors/app_exception.dart';
+import '../../../../core/services/audit_service.dart';
+import '../../../../core/validation/app_validators.dart';
+import '../../../../widgets/ui_kit.dart';
+import '../../../authentication/presentation/providers/auth_provider.dart';
+import '../../data/repositories/user_repository.dart';
+import '../../domain/models/guardian.dart';
+import '../../../../core/navigation/close_form.dart';
+
+/// Screen 12 - Edit an existing guardian. New guardians are registered with
+/// students, so this form only edits.
 class GuardianFormPage extends ConsumerStatefulWidget {
   final Guardian existing;
   const GuardianFormPage({required this.existing, super.key});
@@ -37,7 +43,9 @@ class _GuardianFormPageState extends ConsumerState<GuardianFormPage> {
     _middleNameCtrl = TextEditingController(text: g.middleName ?? '');
     _lastNameCtrl = TextEditingController(text: g.lastName);
     _emailCtrl = TextEditingController(text: g.email ?? '');
-    _phoneCtrl = TextEditingController(text: g.phoneNumber ?? '');
+    _phoneCtrl = TextEditingController(
+      text: AppValidators.malawiSubscriberFromStored(g.phoneNumber),
+    );
     _addressCtrl = TextEditingController(text: g.physicalAddress ?? '');
     _gender = g.gender;
   }
@@ -71,9 +79,7 @@ class _GuardianFormPageState extends ConsumerState<GuardianFormPage> {
             : _middleNameCtrl.text.trim(),
         'lastname': _lastNameCtrl.text.trim(),
         'gender': _gender,
-        'phonenumber': _phoneCtrl.text.trim().isEmpty
-            ? null
-            : _phoneCtrl.text.trim(),
+        'phonenumber': AppValidators.canonicalMalawiPhone(_phoneCtrl.text),
         'physicaladdress': _addressCtrl.text.trim().isEmpty
             ? null
             : _addressCtrl.text.trim(),
@@ -90,7 +96,7 @@ class _GuardianFormPageState extends ConsumerState<GuardianFormPage> {
         actorRole: currentUser.roleName,
       );
 
-      if (mounted) Navigator.pop(context, true);
+      if (mounted) closeForm(context, '/users/guardians', true);
     } catch (e) {
       setState(() => _error = friendlyError(e));
     } finally {
@@ -100,58 +106,54 @@ class _GuardianFormPageState extends ConsumerState<GuardianFormPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Edit Guardian')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            children: [
-              _field(_firstNameCtrl, 'First Name'),
-              _field(_middleNameCtrl, 'Middle Name', required: false),
-              _field(_lastNameCtrl, 'Last Name'),
-              _field(_emailCtrl, 'Email', keyboard: TextInputType.emailAddress),
-              _field(
-                _phoneCtrl,
-                'Phone Number',
-                required: false,
-                keyboard: TextInputType.phone,
-              ),
-              _field(_addressCtrl, 'Physical Address', required: false),
-              DropdownButtonFormField<String>(
+    return FormPageLayout(
+      kicker: 'People',
+      title: 'Edit Guardian',
+      subtitle:
+          'Update contact details. Student links are managed on the student.',
+      formTitle: 'Guardian details',
+      saving: _loading,
+      saveLabel: 'Save Changes',
+      onSave: _submit,
+      error: _error,
+      guideTitle: 'Before you save:',
+      guide:
+          'Names, a valid email and a reachable phone number help the school contact this family.',
+      side: const [
+        CheckRow(label: 'Required fields are clearly marked', checked: true),
+        CheckRow(label: 'Duplicate records are prevented', checked: true),
+        CheckRow(label: 'Protected changes are audited', checked: true),
+      ],
+      form: Form(
+        key: _formKey,
+        child: FieldGrid(
+          children: [
+            _field(_firstNameCtrl, 'First Name'),
+            _field(_middleNameCtrl, 'Middle Name', required: false),
+            _field(_lastNameCtrl, 'Last Name'),
+            _field(_emailCtrl, 'Email', keyboard: TextInputType.emailAddress),
+            _field(
+              _phoneCtrl,
+              'Phone Number',
+              required: false,
+              keyboard: TextInputType.phone,
+              malawiPhone: true,
+            ),
+            UiField(
+              label: 'Gender',
+              child: DropdownButtonFormField<String>(
                 initialValue: _gender,
-                decoration: const InputDecoration(labelText: 'Gender'),
                 items: const [
                   DropdownMenuItem(value: 'MALE', child: Text('Male')),
                   DropdownMenuItem(value: 'FEMALE', child: Text('Female')),
                 ],
                 onChanged: (v) => setState(() => _gender = v!),
               ),
-              const SizedBox(height: 16),
-              if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(
-                    _error!,
-                    style: const TextStyle(color: Colors.red),
-                  ),
-                ),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _loading ? null : _submit,
-                  child: _loading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Save Changes'),
-                ),
-              ),
-            ],
-          ),
+            ),
+            FullWidth(
+              child: _field(_addressCtrl, 'Physical Address', required: false),
+            ),
+          ],
         ),
       ),
     );
@@ -162,14 +164,25 @@ class _GuardianFormPageState extends ConsumerState<GuardianFormPage> {
     String label, {
     bool required = true,
     TextInputType? keyboard,
+    bool malawiPhone = false,
   }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+    return UiField(
+      label: label,
       child: TextFormField(
         controller: ctrl,
         keyboardType: keyboard,
-        decoration: InputDecoration(labelText: label),
-        validator: required
+        inputFormatters: malawiPhone
+            ? [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(9),
+              ]
+            : null,
+        decoration: malawiPhone
+            ? const InputDecoration(prefixText: '+265 ')
+            : null,
+        validator: malawiPhone
+            ? AppValidators.malawiSubscriberDigits
+            : required
             ? (v) =>
                   (v == null || v.trim().isEmpty) ? '$label is required.' : null
             : null,

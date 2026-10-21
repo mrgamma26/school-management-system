@@ -108,7 +108,6 @@ EXCEPTION WHEN unique_violation THEN
   RAISE EXCEPTION 'This transaction reference or receipt has already been recorded.';
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.audit_payment_channel_change()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -133,5 +132,4 @@ BEGIN
   RETURN NEW;
 END;
 $$;
-
 NOTIFY pgrst, 'reload schema';

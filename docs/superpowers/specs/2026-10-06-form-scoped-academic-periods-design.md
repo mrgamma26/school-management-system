@@ -1,4 +1,4 @@
-# Form-Scoped Academic Periods
+ # Form-Scoped Academic Periods
 
 ## Purpose
 

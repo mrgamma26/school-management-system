@@ -8,6 +8,9 @@ import '../../../../core/utils/form_state_persistence.dart';
 import '../calendar_providers.dart';
 import '../../domain/models/calendar_event.dart';
 import '../../../authentication/presentation/providers/auth_provider.dart';
+import '../../../../theme/app_tokens.dart';
+import '../../../../widgets/ui_kit.dart';
+import '../../../../core/navigation/close_form.dart';
 
 // ── Supporting providers ──────────────────────────────────────────────────────
 
@@ -17,9 +20,16 @@ class CalendarEventFormPage extends ConsumerStatefulWidget {
   final CalendarEvent? existingEvent;
   final DateTime? initialDate;
 
+  /// When set the editor is embedded (for example in the calendar's side
+  /// panel) instead of living in its own route or dialog: closing or saving
+  /// calls this with `true` after a save and `false` when dismissed, rather
+  /// than popping the navigator.
+  final ValueChanged<bool>? onFinished;
+
   const CalendarEventFormPage({
     this.existingEvent,
     this.initialDate,
+    this.onFinished,
     super.key,
   });
 
@@ -261,6 +271,17 @@ class _CalendarEventFormPageState extends ConsumerState<CalendarEventFormPage> {
       '${t.hour.toString().padLeft(2, '0')}:'
       '${t.minute.toString().padLeft(2, '0')}';
 
+  /// Close the editor: through [CalendarEventFormPage.onFinished] when
+  /// embedded, otherwise by popping the dialog / route that hosts it.
+  void _finish(bool saved) {
+    final callback = widget.onFinished;
+    if (callback != null) {
+      callback(saved);
+    } else {
+      closeForm(context, '/calendar', saved ? true : null);
+    }
+  }
+
   // ── Save ──────────────────────────────────────────────────────────────────
 
   Future<void> _save() async {
@@ -384,7 +405,7 @@ class _CalendarEventFormPageState extends ConsumerState<CalendarEventFormPage> {
           await FormStatePersistence.clearFormState(_formId);
         }
 
-        if (mounted) Navigator.pop(context, true);
+        if (mounted) _finish(true);
       }
     } catch (e) {
       if (mounted) {
@@ -413,14 +434,12 @@ class _CalendarEventFormPageState extends ConsumerState<CalendarEventFormPage> {
     final canCreateEvent = canManageSchoolCalendar(user?.roleName ?? '');
 
     if (!canCreateEvent) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Calendar Events')),
-        body: const Center(
-          child: Text(
-            'Only administrators can create calendar events.',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 16),
-          ),
+      return const Scaffold(
+        backgroundColor: AppColors.surface,
+        body: UiEmptyState(
+          icon: Icons.lock_outline_rounded,
+          title: 'Calendar events',
+          message: 'Only administrators can create calendar events.',
         ),
       );
     }
@@ -428,13 +447,26 @@ class _CalendarEventFormPageState extends ConsumerState<CalendarEventFormPage> {
     return PopScope(
       canPop: !_saving,
       child: Scaffold(
+        backgroundColor: AppColors.surface,
         appBar: AppBar(
+          backgroundColor: AppColors.surface,
+          foregroundColor: AppColors.textPrimary,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          shape: const Border(bottom: BorderSide(color: AppColors.border)),
           leading: IconButton(
             tooltip: 'Close',
             icon: const Icon(Icons.close),
-            onPressed: _saving ? null : () => Navigator.pop(context),
+            onPressed: _saving ? null : () => _finish(false),
           ),
-          title: Text(_isEdit ? 'Edit Event' : 'New Calendar Event'),
+          title: Text(
+            _isEdit ? 'Edit Event' : 'New Calendar Event',
+            style: const TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w900,
+              color: AppColors.textPrimary,
+            ),
+          ),
           actions: [
             if (!_isEdit)
               AutoSaveIndicator(
@@ -460,18 +492,20 @@ class _CalendarEventFormPageState extends ConsumerState<CalendarEventFormPage> {
               padding: const EdgeInsets.all(16),
               children: [
                 // ── Event name ─────────────────────────────────
-                TextFormField(
-                  controller: _nameCtrl,
-                  textCapitalization: TextCapitalization.words,
-                  decoration: const InputDecoration(
-                    labelText: 'Event Name *',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.event),
+                UiField(
+                  label: 'Event name *',
+                  child: TextFormField(
+                    controller: _nameCtrl,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(
+                      hintText: 'e.g. Parents meeting',
+                      prefixIcon: Icon(Icons.event),
+                    ),
+                    onChanged: (_) => _onFieldChanged(),
+                    validator: (v) => (v == null || v.trim().isEmpty)
+                        ? 'Name is required'
+                        : null,
                   ),
-                  onChanged: (_) => _onFieldChanged(),
-                  validator: (v) => (v == null || v.trim().isEmpty)
-                      ? 'Name is required'
-                      : null,
                 ),
                 const SizedBox(height: 16),
 
@@ -522,32 +556,9 @@ class _CalendarEventFormPageState extends ConsumerState<CalendarEventFormPage> {
                 const SizedBox(height: 8),
 
                 // ── Date range info ────────────────────────────
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.blue.shade200),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.info_outline,
-                        color: Colors.blue.shade700,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Select a date range (e.g., Monday to Friday) to create recurring events',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.blue.shade900,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                const InlineGuide(
+                  text:
+                      'Select a date range (e.g., Monday to Friday) to create recurring events',
                 ),
                 const SizedBox(height: 16),
 
@@ -659,8 +670,8 @@ class _CalendarEventFormPageState extends ConsumerState<CalendarEventFormPage> {
                     children: [
                       DropdownButtonFormField<String?>(
                         initialValue: _applyToAllClasses ? null : _classId,
+                        isExpanded: true,
                         decoration: const InputDecoration(
-                          border: OutlineInputBorder(),
                           prefixIcon: Icon(Icons.class_),
                           hintText: 'School-wide (all classes)',
                         ),
@@ -709,8 +720,8 @@ class _CalendarEventFormPageState extends ConsumerState<CalendarEventFormPage> {
                   error: (e, _) => Text('Could not load academic years: $e'),
                   data: (years) => DropdownButtonFormField<String?>(
                     initialValue: _academicYearId,
+                    isExpanded: true,
                     decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
                       prefixIcon: Icon(Icons.calendar_month),
                       hintText: 'Not linked to a term',
                     ),
@@ -732,14 +743,14 @@ class _CalendarEventFormPageState extends ConsumerState<CalendarEventFormPage> {
                 const SizedBox(height: 16),
 
                 // ── Description ────────────────────────────────
-                TextFormField(
-                  controller: _descCtrl,
-                  maxLines: 3,
-                  decoration: const InputDecoration(
-                    labelText: 'Description (optional)',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.notes),
-                    alignLabelWithHint: true,
+                UiField(
+                  label: 'Description (optional)',
+                  child: TextFormField(
+                    controller: _descCtrl,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      hintText: 'Add any details families or staff should know',
+                    ),
                   ),
                 ),
                 const SizedBox(height: 32),
@@ -750,7 +761,15 @@ class _CalendarEventFormPageState extends ConsumerState<CalendarEventFormPage> {
                   icon: Icon(_isEdit ? Icons.save : Icons.add),
                   label: Text(_isEdit ? 'Save Changes' : 'Create Event'),
                   style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(52),
+                    minimumSize: const Size.fromHeight(46),
+                    backgroundColor: AppColors.primary,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    textStyle: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -767,7 +786,7 @@ class _CalendarEventFormPageState extends ConsumerState<CalendarEventFormPage> {
     CalendarEventType.exam => Colors.orange.shade700,
     CalendarEventType.timetable => Colors.blue.shade600,
     CalendarEventType.schoolEvent => Colors.green.shade600,
-    CalendarEventType.termDate => Colors.purple.shade600,
+    CalendarEventType.termDate => AppColors.primaryDark,
   };
 }
 
@@ -778,14 +797,7 @@ class _SectionLabel extends StatelessWidget {
   const _SectionLabel(this.text);
 
   @override
-  Widget build(BuildContext context) => Text(
-    text,
-    style: const TextStyle(
-      fontWeight: FontWeight.w600,
-      fontSize: 13,
-      color: Colors.black87,
-    ),
-  );
+  Widget build(BuildContext context) => FieldLabel(text);
 }
 
 class _DateButton extends StatelessWidget {
@@ -808,6 +820,8 @@ class _DateButton extends StatelessWidget {
       style: OutlinedButton.styleFrom(
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
         alignment: Alignment.centerLeft,
+        side: const BorderSide(color: AppColors.border),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
       ),
     );
   }

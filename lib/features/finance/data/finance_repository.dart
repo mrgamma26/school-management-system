@@ -1,3 +1,7 @@
+import 'dart:typed_data';
+
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../../../core/database/supabase_client.dart';
 import '../../../core/errors/app_exception.dart';
 import '../domain/models/fee_structure.dart';
@@ -53,6 +57,80 @@ AppException _mapException(Object error) {
 /// Data access layer for all finance tables:
 /// [feestructure], [payment] and [financialadjustment].
 class FinanceRepository {
+  /// Stores evidence for a bank deposit after its payment row has been posted.
+  /// The payment id links the slip to the normal payment ledger.
+  Future<void> attachDepositSlip({
+    required String studentId,
+    required String paymentId,
+    required String bankName,
+    required String reference,
+    required double amount,
+    required DateTime depositDate,
+    required Uint8List bytes,
+    required String fileName,
+  }) async {
+    final user = supabase.auth.currentUser;
+    if (user == null) throw StateError('You must be signed in.');
+    final staff = await supabase
+        .from('staff')
+        .select('staffid')
+        .eq('userid', user.id)
+        .single();
+    final safeName = fileName.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+    final extension = safeName.split('.').last.toLowerCase();
+    final mimeType = switch (extension) {
+      'jpg' || 'jpeg' => 'image/jpeg',
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      'pdf' => 'application/pdf',
+      _ => throw ArgumentError('Unsupported deposit-slip file type.'),
+    };
+    if (bytes.isEmpty || bytes.length > 5 * 1024 * 1024) {
+      throw ArgumentError('The deposit slip must be between 1 byte and 5 MB.');
+    }
+    final path =
+        '${user.id}/${DateTime.now().microsecondsSinceEpoch}_$safeName';
+    await supabase.storage.from('deposit-slips').uploadBinary(
+      path,
+      bytes,
+      fileOptions: FileOptions(contentType: mimeType),
+    );
+    try {
+      await supabase.from('deposit_slips').insert({
+        'student_id': studentId,
+        'payment_id': paymentId,
+        'bank_name': bankName.trim(),
+        'deposit_date': depositDate.toIso8601String().substring(0, 10),
+        'reference': reference.trim(),
+        'amount': amount,
+        'storage_path': path,
+        'created_by': staff['staffid'],
+      });
+    } catch (_) {
+      await supabase.storage.from('deposit-slips').remove([path]);
+      rethrow;
+    }
+  }
+
+  /// Reverses a posted payment without mutating the original ledger row.
+  Future<String> reversePayment({
+    required String paymentId,
+    required String reason,
+  }) async {
+    if (reason.trim().isEmpty) {
+      throw ArgumentError('A reversal reason is required.');
+    }
+    try {
+      final result = await supabase.rpc(
+        'reverse_payment',
+        params: {'p_payment_id': paymentId, 'p_reason': reason.trim()},
+      );
+      return result as String;
+    } catch (error) {
+      throw ServerException('Could not reverse the payment: $error');
+    }
+  }
+
   // ─────────────────────────────────────────────
   // Fee Structures
   // ─────────────────────────────────────────────

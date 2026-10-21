@@ -12,7 +12,6 @@ ALTER TABLE public.progressionreview ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.weedingreview     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.classsubject      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.auditlog          ENABLE ROW LEVEL SECURITY;
-
 -- ─────────────────────────────────────────────
 -- assessment
 -- Teachers manage their own class-subject assessments.
@@ -28,7 +27,6 @@ USING (
       AND s.userid = auth.uid()
   )
 );
-
 CREATE POLICY "privileged roles read all assessments"
 ON public.assessment FOR SELECT TO authenticated
 USING (
@@ -36,7 +34,6 @@ USING (
     'HEAD_TEACHER','SYSTEM_ADMIN','ADMINISTRATOR','REGISTRAR'
   )
 );
-
 -- ─────────────────────────────────────────────
 -- grade
 -- Teachers can read/write grades for assessments they own.
@@ -52,7 +49,6 @@ USING (
       AND s.userid  = auth.uid()
   )
 );
-
 CREATE POLICY "privileged roles read all grades"
 ON public.grade FOR SELECT TO authenticated
 USING (
@@ -60,7 +56,6 @@ USING (
     'HEAD_TEACHER','SYSTEM_ADMIN','ADMINISTRATOR','REGISTRAR'
   )
 );
-
 CREATE POLICY "guardians read grades for linked students"
 ON public.grade FOR SELECT TO authenticated
 USING (
@@ -71,7 +66,6 @@ USING (
       AND sg.studentid = grade.studentid
   )
 );
-
 -- ─────────────────────────────────────────────
 -- progressionreview
 -- Head teacher and admin can read and decide.
@@ -85,7 +79,6 @@ USING (
     'HEAD_TEACHER','SYSTEM_ADMIN','ADMINISTRATOR','REGISTRAR'
   )
 );
-
 -- ─────────────────────────────────────────────
 -- weedingreview
 -- Same access as progression reviews.
@@ -97,7 +90,6 @@ USING (
     'HEAD_TEACHER','SYSTEM_ADMIN','ADMINISTRATOR','REGISTRAR'
   )
 );
-
 -- ─────────────────────────────────────────────
 -- classsubject (teaching assignments)
 -- All authenticated staff can read assignments.
@@ -110,13 +102,11 @@ USING (
     'TEACHER','HEAD_TEACHER','SYSTEM_ADMIN','ADMINISTRATOR','REGISTRAR','ACCOUNTANT'
   )
 );
-
 CREATE POLICY "admin manages class assignments"
 ON public.classsubject FOR ALL TO authenticated
 USING (
   public.current_app_role() IN ('SYSTEM_ADMIN','ADMINISTRATOR','REGISTRAR')
 );
-
 -- ─────────────────────────────────────────────
 -- auditlog — append-only for all; read only for super admin
 -- ─────────────────────────────────────────────
@@ -124,12 +114,10 @@ USING (
 CREATE POLICY "any authenticated user can insert audit log"
 ON public.auditlog FOR INSERT TO authenticated
 WITH CHECK (true);
-
 -- Only SYSTEM_ADMIN / SUPER_USER can SELECT audit log
 CREATE POLICY "super admin reads audit log"
 ON public.auditlog FOR SELECT TO authenticated
 USING (
   public.current_app_role() IN ('SYSTEM_ADMIN','SUPER_USER')
 );
-
--- No UPDATE or DELETE policy → audit log is truly append-only
+-- No UPDATE or DELETE policy → audit log is truly append-only;

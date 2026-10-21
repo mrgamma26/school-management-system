@@ -1,7 +1,9 @@
 import 'auth/school_role_access.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
 import '../widgets/app_shell.dart';
 import '../features/authentication/presentation/pages/login_page.dart';
 import '../features/authentication/presentation/pages/change_password_page.dart';
@@ -9,15 +11,11 @@ import '../features/authentication/presentation/pages/forgot_password_page.dart'
 import '../features/authentication/presentation/providers/auth_provider.dart';
 import '../features/dashboards/presentation/role_home.dart';
 import '../features/administration/presentation/pages/user_management_page.dart';
-import '../features/administration/presentation/pages/create_user_page.dart';
 import '../features/administration/presentation/pages/user_details_page.dart';
 import '../features/administration/presentation/pages/manage_permissions_page.dart';
 import '../features/academics/presentation/pages/academic_year_list_page.dart';
 import '../features/academics/presentation/pages/academic_year_form_page.dart';
-import '../features/academics/domain/models/academic_year.dart';
-import '../features/academics/presentation/pages/class_list_page.dart';
-import '../features/academics/presentation/pages/class_form_page.dart';
-import '../features/academics/domain/models/class_model.dart';
+import '../features/academics/domain/models/academic_calendar.dart';
 import '../features/academics/presentation/pages/subject_list_page.dart';
 import '../features/academics/presentation/pages/subject_form_page.dart';
 import '../features/academics/domain/models/subject.dart';
@@ -27,6 +25,9 @@ import '../features/finance/presentation/pages/fee_structure_form_page.dart';
 import '../features/finance/domain/models/fee_structure.dart';
 import '../features/finance/presentation/pages/record_payment_page.dart';
 import '../features/finance/presentation/pages/student_account_page.dart';
+import '../features/finance/presentation/pages/student_accounts_page.dart';
+import '../features/finance/presentation/pages/overdue_accounts_page.dart';
+import '../features/guardian/presentation/guardian_child_page.dart';
 import '../features/finance/presentation/pages/payment_configuration_page.dart';
 import '../features/students/presentation/student_list_page.dart';
 import '../features/students/presentation/teacher_class_students_page.dart';
@@ -47,17 +48,29 @@ import '../features/calendar/presentation/pages/calendar_page.dart';
 import '../features/calendar/presentation/pages/calendar_event_form_page.dart';
 import '../features/calendar/data/calendar_repository.dart';
 import '../features/assessments/presentation/pages/assessments_page.dart';
-import '../features/assessments/presentation/pages/grade_entry_page.dart';
+import '../features/assessments/presentation/pages/results_review_page.dart';
 import '../features/assessments/presentation/pages/guardian_academic_progress_page.dart';
 import '../features/assessments/presentation/pages/guardian_report_card_page.dart';
 import '../features/progression/presentation/pages/progression_reviews_page.dart';
 import '../features/weeding/presentation/pages/weeding_reviews_page.dart';
-import '../features/academics/presentation/pages/class_assignment_page.dart';
+import '../features/academics/presentation/pages/class_setup_page.dart';
+import '../features/academics/presentation/pages/teacher_assignments_page.dart';
 import '../features/communications/presentation/pages/notifications_page.dart';
 import '../features/communications/presentation/pages/teacher_comment_page.dart';
 import '../features/finance/presentation/pages/guardian_payment_history_page.dart';
 import '../features/administration/presentation/pages/audit_log_page.dart';
 import '../features/reports/presentation/pages/reports_page.dart';
+import '../features/settings/presentation/school_settings_page.dart';
+import '../features/assessments/presentation/pages/correction_requests_page.dart';
+import '../features/assessments/presentation/pages/publish_results_page.dart';
+import '../features/finance/presentation/pages/deposit_slips_page.dart';
+import '../features/finance/presentation/pages/payment_arrangements_page.dart';
+import '../features/finance/presentation/pages/payment_reversals_page.dart';
+import '../features/communications/presentation/pages/email_delivery_log_page.dart';
+import '../features/help/presentation/pages/help_support_page.dart';
+import '../features/help/presentation/pages/roles_workflow_map_page.dart';
+import '../features/help/presentation/pages/supabase_setup_page.dart';
+import '../features/profile/presentation/pages/my_profile_page.dart';
 
 // ── Role → home route mapping ────────────────────────────────────────────────
 
@@ -107,6 +120,8 @@ const Map<String, List<String>> _roleRouteAccess = {
     '/notifications',
     '/teacher/comments',
     '/reports',
+    '/settings/',
+    '/results/',
   ],
   'ADMINISTRATOR': [
     '/administrator/',
@@ -120,6 +135,7 @@ const Map<String, List<String>> _roleRouteAccess = {
     '/notifications',
     '/teacher/comments',
     '/reports',
+    '/settings/',
   ],
   'HEAD_TEACHER': [
     '/headteacher/',
@@ -132,6 +148,7 @@ const Map<String, List<String>> _roleRouteAccess = {
     '/notifications',
     '/teacher/comments',
     '/reports',
+    '/results/',
   ],
   'TEACHER': [
     '/teacher/',
@@ -141,6 +158,7 @@ const Map<String, List<String>> _roleRouteAccess = {
     '/assessments',
     '/notifications',
     '/teacher/comments',
+    '/results/',
   ],
   'ACCOUNTANT': [
     '/accountant/',
@@ -155,7 +173,7 @@ const Map<String, List<String>> _roleRouteAccess = {
 
 /// Checks if a user with the given [role] is allowed to access the [path].
 /// Returns true if allowed, false otherwise.
-bool _isRouteAllowedForRole(String role, String path) {
+bool isRouteAllowedForRole(String role, String path) {
   // Public authentication routes remain reachable before a user profile loads.
   if (path == '/login' ||
       path == '/forgot-password' ||
@@ -165,6 +183,20 @@ bool _isRouteAllowedForRole(String role, String path) {
   }
 
   final normalizedRole = _canonicalRoleName(role);
+  // Profile and help are open to every known role.
+  if (isSharedAccountRoute(path)) {
+    return _roleRouteAccess.containsKey(normalizedRole);
+  }
+  if ((path == '/admin/roles-map' || path == '/admin/supabase-setup') &&
+      !canViewSystemGuides(normalizedRole)) {
+    return false;
+  }
+  if ((path.startsWith('/finance/students/') ||
+          path == '/finance/accounts' ||
+          path == '/finance/overdue') &&
+      !canRecordStudentPayments(normalizedRole)) {
+    return false;
+  }
   if (path == '/finance/payment-configuration' &&
       !const {'SUPER_USER', 'ADMINISTRATOR'}.contains(normalizedRole)) {
     return false;
@@ -187,6 +219,23 @@ bool _isRouteAllowedForRole(String role, String path) {
   }
   if (path.startsWith('/academics/years/') &&
       !canManageSchoolCalendar(normalizedRole)) {
+    return false;
+  }
+  // Class Setup is changed by Administrators and Super Users; the Head Teacher
+  // opens it read-only to see who teaches what.
+  if (path == '/academics/class-setup' &&
+      !canManageAcademicSetup(normalizedRole) &&
+      normalizedRole != 'HEAD_TEACHER') {
+    return false;
+  }
+  if (path == '/results/corrections' &&
+      !canViewResultCorrections(normalizedRole)) {
+    return false;
+  }
+  if (path == '/results/review' && !canReviewSubmittedResults(normalizedRole)) {
+    return false;
+  }
+  if (path == '/results/publish' && !canPublishResults(normalizedRole)) {
     return false;
   }
   final allowedPrefixes = _roleRouteAccess[normalizedRole];
@@ -229,6 +278,10 @@ final routerProvider = Provider<GoRouter>((ref) {
     refreshListenable: notifier,
     redirect: (context, state) {
       final auth = notifier.authState;
+      final workspaceRole = ref.read(activeWorkspaceRoleProvider);
+      final effectiveRole = workspaceRole.isEmpty
+          ? auth.user?.roleName ?? ''
+          : workspaceRole;
       final loggedIn = auth.user != null;
       final isLogin = state.matchedLocation == '/login';
       final isForgotPassword = state.matchedLocation == '/forgot-password';
@@ -246,13 +299,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         return '/change-password';
       }
 
-      if (isLogin) return homeForRole(auth.user!.roleName);
+      if (isLogin) return homeForRole(effectiveRole);
 
       // FIX 5: Role-based route access control
       // Check if the current user's role is allowed to access this route
-      if (!_isRouteAllowedForRole(auth.user!.roleName, state.matchedLocation)) {
+      if (!isRouteAllowedForRole(effectiveRole, state.matchedLocation)) {
         // Unauthorized access - redirect to their home page
-        return homeForRole(auth.user!.roleName);
+        return homeForRole(effectiveRole);
       }
 
       return null;
@@ -311,7 +364,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/admin/users/create',
-            builder: (context, state) => const CreateUserPage(),
+            builder: (context, state) => const StaffFormPage(),
           ),
           GoRoute(
             path: '/admin/users/:userId',
@@ -338,22 +391,43 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/academics/years/:id/edit',
             builder: (context, state) {
-              final year = state.extra as AcademicYear?;
+              final year = state.extra as AcademicCalendarYear?;
               return AcademicYearFormPage(existing: year);
             },
           ),
           GoRoute(
-            path: '/academics/classes',
-            builder: (context, state) => const ClassListPage(),
+            path: '/settings/school',
+            builder: (context, state) => const SchoolSettingsPage(),
           ),
           GoRoute(
-            path: '/academics/classes/new',
-            builder: (context, state) => const ClassFormPage(),
+            path: '/results/corrections',
+            builder: (context, state) => const CorrectionRequestsPage(),
           ),
           GoRoute(
-            path: '/academics/classes/:id/edit',
-            builder: (context, state) =>
-                ClassFormPage(existing: state.extra as ClassModel?),
+            path: '/results/review',
+            builder: (context, state) => ResultsReviewPage(
+              initialAssessmentId: state.uri.queryParameters['assessment'],
+            ),
+          ),
+          GoRoute(
+            path: '/results/publish',
+            builder: (context, state) => const PublishResultsPage(),
+          ),
+          GoRoute(
+            path: '/finance/deposit-slips',
+            builder: (context, state) => const DepositSlipsPage(),
+          ),
+          GoRoute(
+            path: '/finance/arrangements',
+            builder: (context, state) => const PaymentArrangementsPage(),
+          ),
+          GoRoute(
+            path: '/finance/reversals',
+            builder: (context, state) => const PaymentReversalsPage(),
+          ),
+          GoRoute(
+            path: '/admin/email-log',
+            builder: (context, state) => const EmailDeliveryLogPage(),
           ),
           GoRoute(
             path: '/academics/subjects',
@@ -397,6 +471,14 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => FeeStructureFormPage(
               academicYearId: state.pathParameters['yearId']!,
             ),
+          ),
+          GoRoute(
+            path: '/finance/accounts',
+            builder: (context, state) => const StudentAccountsPage(),
+          ),
+          GoRoute(
+            path: '/finance/overdue',
+            builder: (context, state) => const OverdueAccountsPage(),
           ),
           GoRoute(
             path: '/finance/students/:studentId/account',
@@ -519,18 +601,11 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/assessments/:assessmentId/grades',
-            builder: (context, state) {
-              final extra = state.extra as Map<String, dynamic>? ?? {};
-              return GradeEntryPage(
-                assessmentId: state.pathParameters['assessmentId']!,
-                assessmentName:
-                    extra['assessmentName'] as String? ?? 'Assessment',
-                maxScore: (extra['maxScore'] as num?)?.toDouble() ?? 100,
-                classSubjectId: extra['classSubjectId'] as String? ?? '',
-                className: extra['className'] as String? ?? 'Class',
-                subjectName: extra['subjectName'] as String? ?? 'Subject',
-              );
-            },
+            // Deep link: the same workspace with this assessment selected.
+            builder: (context, state) => AssessmentsPage(
+              key: ValueKey(state.pathParameters['assessmentId']),
+              initialAssessmentId: state.pathParameters['assessmentId'],
+            ),
           ),
 
           // ── Progression & Weeding reviews ─────────────────────────────────────
@@ -545,8 +620,14 @@ final routerProvider = Provider<GoRouter>((ref) {
 
           // ── Class assignments ─────────────────────────────────────────────────
           GoRoute(
+            path: '/academics/class-setup',
+            builder: (context, state) => ClassSetupPage(
+              initialClassId: state.uri.queryParameters['classId'],
+            ),
+          ),
+          GoRoute(
             path: '/academics/assignments',
-            builder: (context, state) => const ClassAssignmentPage(),
+            builder: (context, state) => const TeacherAssignmentsPage(),
           ),
 
           // ── Communications ────────────────────────────────────────────────────
@@ -560,6 +641,13 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
 
           // ── Guardian-specific ─────────────────────────────────────────────────
+          GoRoute(
+            path: '/guardian/child',
+            builder: (context, state) => GuardianChildPage(
+              initialStudentId: state.uri.queryParameters['student'],
+              initialTab: state.uri.queryParameters['tab'],
+            ),
+          ),
           GoRoute(
             path: '/guardian/payments',
             builder: (context, state) => const GuardianPaymentHistoryPage(),
@@ -577,6 +665,26 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/admin/audit-log',
             builder: (context, state) => const AuditLogPage(),
+          ),
+
+          // ── System guidance (Super User) ──────────────────────────────────────
+          GoRoute(
+            path: '/admin/roles-map',
+            builder: (context, state) => const RolesWorkflowMapPage(),
+          ),
+          GoRoute(
+            path: '/admin/supabase-setup',
+            builder: (context, state) => const SupabaseSetupPage(),
+          ),
+
+          // ── Help and profile (every signed-in role) ───────────────────────────
+          GoRoute(
+            path: '/help',
+            builder: (context, state) => const HelpSupportPage(),
+          ),
+          GoRoute(
+            path: '/profile',
+            builder: (context, state) => const MyProfilePage(),
           ),
 
           // ── Reports ───────────────────────────────────────────────────────────
@@ -611,7 +719,13 @@ class _AuthenticatedShell extends ConsumerWidget {
     }
     if (location.endsWith('/home')) return child;
 
-    return AppShell(homeRoute: homeForRole(user.roleName), body: child);
+    final workspaceRole = ref.watch(activeWorkspaceRoleProvider);
+    return AppShell(
+      homeRoute: homeForRole(
+        workspaceRole.isEmpty ? user.roleName : workspaceRole,
+      ),
+      body: child,
+    );
   }
 }
 

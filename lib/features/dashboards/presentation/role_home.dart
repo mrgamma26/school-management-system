@@ -28,9 +28,11 @@ class RoleHome extends ConsumerWidget {
       );
     }
 
-    switch ((user.roleName.trim().toUpperCase() == 'SYSTEM_ADMIN'
+    final activeRole = ref.watch(activeWorkspaceRoleProvider);
+    final selectedRole = activeRole.isEmpty ? user.roleName : activeRole;
+    switch ((selectedRole.trim().toUpperCase() == 'SYSTEM_ADMIN'
         ? 'SUPER_USER'
-        : user.roleName.trim().toUpperCase())) {
+        : selectedRole.trim().toUpperCase())) {
       case 'SUPER_USER':
         return const AdminDashboard();
       case 'ADMINISTRATOR':

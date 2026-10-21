@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../theme/app_tokens.dart';
-import '../core/constants/app_strings.dart';
-import '../features/authentication/presentation/providers/auth_provider.dart';
-import '../core/navigation/role_menus.dart';
 
-// ---------------------------------------------------------------------------
-// NavItem — kept for backward-compat with nav_items.dart imports
-// ---------------------------------------------------------------------------
+import '../core/constants/app_strings.dart';
+import '../core/navigation/role_menus.dart';
+import '../features/authentication/presentation/providers/auth_provider.dart';
+import '../features/settings/presentation/settings_providers.dart';
+import '../theme/app_tokens.dart';
 
 class NavItem {
   final String label;
@@ -26,10 +24,7 @@ class NavItem {
   });
 }
 
-// ---------------------------------------------------------------------------
-// AppShell — single Scaffold with a Drawer that is CLOSED by default
-// ---------------------------------------------------------------------------
-
+/// Role workspace frame: navy sidebar + top bar, matching the approved design.
 class AppShell extends ConsumerWidget {
   final Widget body;
   final String homeRoute;
@@ -45,372 +40,129 @@ class AppShell extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authProvider).user;
-    final granted = ref
+    final activeRole = ref.watch(activeWorkspaceRoleProvider);
+    final role = activeRole.isEmpty ? user?.roleName ?? '' : activeRole;
+    final permissions = ref
         .watch(permissionsProvider)
-        .maybeWhen(data: (d) => d, orElse: () => const <String>{});
-    final nodes = menuForRole(user?.roleName ?? '', granted);
-    final loc = GoRouterState.of(context).matchedLocation;
-    final onHome = loc == homeRoute || loc.endsWith('/home');
+        .maybeWhen(data: (value) => value, orElse: () => const <String>{});
+    final nodes = menuForRole(role, permissions);
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar:
-          appBar ??
-          AppBar(
-            toolbarHeight: 52,
-            backgroundColor: AppColors.surface,
-            elevation: 0,
-            scrolledUnderElevation: 1,
-            // Flutter auto-inserts the hamburger leading icon when drawer != null
-            title: Row(
-              children: [
-                const _LogoIcon(size: 26),
-                const SizedBox(width: Sp.sm),
-                Flexible(
-                  child: Text(
-                    AppStrings.appName,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontFamily: AppText.fontHeading,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final phone = constraints.maxWidth < Breakpoints.mobile;
+        final content = Column(
+          children: [
+            appBar ?? _TopBar(homeRoute: homeRoute, phone: phone),
+            Expanded(child: body),
+          ],
+        );
+        final panel = _NavigationPanel(
+          nodes: nodes,
+          homeRoute: homeRoute,
+          closeOnNavigate: phone,
+        );
+        return Scaffold(
+          backgroundColor: AppColors.background,
+          drawer: phone
+              ? Drawer(
+                  backgroundColor: AppColors.navy,
+                  width: 280,
+                  child: panel,
+                )
+              : null,
+          body: phone
+              ? content
+              : Row(
+                  children: [
+                    SizedBox(width: AppSizes.sidebarWidth, child: panel),
+                    Expanded(child: content),
+                  ],
                 ),
-              ],
-            ),
-            actions: [
-              if (!onHome)
-                IconButton(
-                  icon: const Icon(Icons.home_outlined),
-                  tooltip: 'Home',
-                  onPressed: () => context.go(homeRoute),
-                ),
-              IconButton(
-                icon: const Icon(Icons.logout_outlined),
-                tooltip: 'Sign out',
-                onPressed: () => ref.read(authProvider.notifier).signOut(),
-              ),
-            ],
-          ),
-      drawer: _MenuDrawer(nodes: nodes, homeRoute: homeRoute),
-      body: body,
-      bottomNavigationBar:
-          MediaQuery.sizeOf(context).width >= Breakpoints.tablet
-          ? const _WebFooter()
-          : null,
+        );
+      },
     );
   }
 }
 
-// ---------------------------------------------------------------------------
-// Menu drawer — closed by default, groups collapsed until tapped
-// ---------------------------------------------------------------------------
+// ── Top bar ──────────────────────────────────────────────────────────────────
 
-class _MenuDrawer extends ConsumerWidget {
-  final List<MenuNode> nodes;
+class _TopBar extends ConsumerWidget {
   final String homeRoute;
+  final bool phone;
+  const _TopBar({required this.homeRoute, required this.phone});
 
-  const _MenuDrawer({required this.nodes, required this.homeRoute});
+  static String _titleFor(String location) {
+    final parts = location
+        .split('?')
+        .first
+        .split('/')
+        .where((p) => p.isNotEmpty)
+        .toList();
+    if (parts.isEmpty) return 'Overview';
+    final last = parts.last == 'home' && parts.length > 1
+        ? 'Overview'
+        : parts.last;
+    return last
+        .replaceAll(RegExp(r'[-_]'), ' ')
+        .split(' ')
+        .map((w) => w.isEmpty ? '' : '${w[0].toUpperCase()}${w.substring(1)}')
+        .join(' ');
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final user = ref.watch(authProvider).user;
-    final loc = GoRouterState.of(context).matchedLocation;
+    final location = GoRouterState.of(context).matchedLocation;
+    final school = ref
+        .watch(schoolBrandingProvider)
+        .maybeWhen(data: (v) => v.schoolName, orElse: () => AppStrings.appName);
 
-    return Drawer(
-      child: SafeArea(
-        child: Column(
-          children: [
-            // ── Header ────────────────────────────────────────────
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(Sp.lg, Sp.lg, Sp.lg, Sp.xl),
-              decoration: const BoxDecoration(gradient: AppGradients.sidebar),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const _LogoIcon(size: 32),
-                      const SizedBox(width: Sp.sm),
-                      const Expanded(
-                        child: Text(
-                          AppStrings.appName,
-                          style: TextStyle(
-                            fontFamily: AppText.fontHeading,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (user != null) ...[
-                    const SizedBox(height: Sp.md),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: Sp.md,
-                        vertical: Sp.sm,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.12),
-                        borderRadius: Radii.mdBr,
-                      ),
-                      child: Row(
-                        children: [
-                          CircleAvatar(
-                            radius: 16,
-                            backgroundColor: Colors.white.withValues(
-                              alpha: 0.25,
-                            ),
-                            child: Text(
-                              user.username.isEmpty
-                                  ? '?'
-                                  : user.username[0].toUpperCase(),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 13,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: Sp.sm),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  user.username,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                  maxLines: 1,
-                                ),
-                                Text(
-                                  _roleFriendly(user.roleName),
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.7),
-                                    fontSize: 10,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-
-            // ── Nav items ─────────────────────────────────────────
-            Expanded(
-              child: ListView(
-                padding: EdgeInsets.zero,
-                children: [
-                  // Dashboard home link
-                  _DrawerLink(
-                    icon: Icons.home_outlined,
-                    label: 'Dashboard',
-                    route: homeRoute,
-                    currentLoc: loc,
-                    onNav: () {
-                      Navigator.of(context).pop();
-                      context.go(homeRoute);
-                    },
-                  ),
-                  const Divider(height: 1, indent: Sp.lg, endIndent: Sp.lg),
-                  ...nodes.map((n) => _buildNode(context, n, loc)),
-                ],
-              ),
-            ),
-
-            // ── Sign out ──────────────────────────────────────────
-            const Divider(height: 1),
-            ListTile(
-              leading: const Icon(Icons.logout_outlined, color: Colors.red),
-              title: const Text(
-                'Sign Out',
-                style: TextStyle(
-                  color: Colors.red,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              onTap: () {
-                Navigator.of(context).pop();
-                ref.read(authProvider.notifier).signOut();
-              },
-            ),
-            const SizedBox(height: Sp.sm),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNode(BuildContext context, MenuNode node, String loc) {
-    if (!node.isGroup) {
-      return _DrawerLink(
-        icon: node.icon,
-        label: node.label,
-        route: node.route!,
-        currentLoc: loc,
-        onNav: () {
-          Navigator.of(context).pop();
-          context.go(node.route!);
-        },
-      );
-    }
-
-    // Group — check if any child is active so we can auto-expand
-    final hasActive = _childActive(node, loc);
-
-    return Theme(
-      // Remove default ExpansionTile divider lines
-      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-      child: ExpansionTile(
-        key: PageStorageKey<String>(node.label),
-        initiallyExpanded: hasActive,
-        leading: Icon(node.icon, size: 20, color: AppColors.textSecondary),
-        title: Text(
-          node.label,
-          style: const TextStyle(
-            fontFamily: AppText.fontBody,
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        tilePadding: const EdgeInsets.symmetric(horizontal: Sp.lg, vertical: 0),
-        childrenPadding: EdgeInsets.zero,
-        shape: const Border(),
-        collapsedShape: const Border(),
-        children: node.children
-            .map((c) => _buildNode(context, c, loc))
-            .toList(),
-      ),
-    );
-  }
-
-  bool _childActive(MenuNode node, String loc) {
-    for (final c in node.children) {
-      if (c.isGroup) {
-        if (_childActive(c, loc)) return true;
-      } else {
-        final r = c.route!;
-        if (loc == r || loc.startsWith('$r/')) return true;
-      }
-    }
-    return false;
-  }
-
-  static String _roleFriendly(String r) => r
-      .replaceAll('_', ' ')
-      .split(' ')
-      .map(
-        (w) =>
-            w.isEmpty ? '' : w[0].toUpperCase() + w.substring(1).toLowerCase(),
-      )
-      .join(' ');
-}
-
-// ---------------------------------------------------------------------------
-// Single nav link inside the drawer
-// ---------------------------------------------------------------------------
-
-class _DrawerLink extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String route;
-  final String currentLoc;
-  final VoidCallback onNav;
-
-  const _DrawerLink({
-    required this.icon,
-    required this.label,
-    required this.route,
-    required this.currentLoc,
-    required this.onNav,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isStudentRegistration =
-        currentLoc == '/students/new' ||
-        currentLoc.startsWith('/students/new/');
-    final active =
-        (currentLoc == route || currentLoc.startsWith('$route/')) &&
-        !(route == '/students' && isStudentRegistration);
-    return ListTile(
-      selected: active,
-      selectedTileColor: AppColors.primary.withValues(alpha: 0.08),
-      leading: Icon(
-        icon,
-        size: 20,
-        color: active ? AppColors.primary : AppColors.textSecondary,
-      ),
-      title: Text(
-        label,
-        style: TextStyle(
-          fontFamily: AppText.fontBody,
-          fontSize: 14,
-          fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-          color: active ? AppColors.primary : AppColors.textPrimary,
-        ),
-      ),
-      contentPadding: const EdgeInsets.symmetric(
-        horizontal: Sp.xl,
-        vertical: 0,
-      ),
-      onTap: onNav,
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Web footer (wide screens only)
-// ---------------------------------------------------------------------------
-
-class _WebFooter extends StatelessWidget {
-  const _WebFooter();
-
-  @override
-  Widget build(BuildContext context) {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: Sp.xxl, vertical: Sp.md),
+      height: AppSizes.topbarHeight,
+      padding: EdgeInsets.symmetric(horizontal: phone ? 8 : 24),
       decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: AppColors.divider)),
         color: AppColors.surface,
+        border: Border(bottom: BorderSide(color: AppColors.border)),
       ),
       child: Row(
         children: [
-          const _LogoIcon(size: 18),
-          const SizedBox(width: Sp.sm),
-          Text(
-            AppStrings.appName,
-            style: const TextStyle(
-              fontFamily: AppText.fontHeading,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: AppColors.textSecondary,
+          if (phone)
+            Builder(
+              builder: (ctx) => IconButton(
+                icon: const Icon(Icons.menu_rounded),
+                tooltip: 'Menu',
+                onPressed: () => Scaffold.of(ctx).openDrawer(),
+              ),
+            ),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  if (!phone)
+                    TextSpan(
+                      text: '$school / ',
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  TextSpan(
+                    text: _titleFor(location),
+                    style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 13),
             ),
           ),
-          const Spacer(),
-          Text(
-            '© ${DateTime.now().year} ${AppStrings.appName} — ${AppStrings.copyright}',
-            style: const TextStyle(
-              fontFamily: AppText.fontBody,
-              fontSize: 11,
-              color: AppColors.textDisabled,
-            ),
+          _TopIconButton(
+            icon: Icons.home_outlined,
+            tooltip: 'Home',
+            onTap: () => context.go(homeRoute),
           ),
         ],
       ),
@@ -418,34 +170,479 @@ class _WebFooter extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Logo icon (reusable across shell and drawer header)
-// ---------------------------------------------------------------------------
+class _TopIconButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+  const _TopIconButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
 
-class _LogoIcon extends StatelessWidget {
-  final double size;
-  const _LogoIcon({this.size = 32});
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onTap,
+        child: Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: AppColors.primarySurface,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, size: 19, color: AppColors.primaryDark),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Sidebar ──────────────────────────────────────────────────────────────────
+
+class _NavigationPanel extends ConsumerWidget {
+  final List<MenuNode> nodes;
+  final String homeRoute;
+  final bool closeOnNavigate;
+
+  const _NavigationPanel({
+    required this.nodes,
+    required this.homeRoute,
+    required this.closeOnNavigate,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(authProvider).user;
+    final activeRole = ref.watch(activeWorkspaceRoleProvider);
+    final roleKey = activeRole.isEmpty ? (user?.roleName ?? '') : activeRole;
+    final location = GoRouterState.of(context).matchedLocation;
+    final branding = ref
+        .watch(schoolBrandingProvider)
+        .maybeWhen(data: (value) => value, orElse: () => null);
+
+    void navigate(String route) {
+      if (closeOnNavigate) Navigator.of(context).pop();
+      context.go(route);
+    }
+
+    return Material(
+      color: AppColors.navy,
+      child: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 22, 16, 14),
+              child: Row(
+                children: [
+                  const _LogoIcon(size: 42),
+                  const SizedBox(width: 11),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          branding?.schoolName ?? AppStrings.appName,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                            height: 1.15,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 6, 20, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  '${_roleFriendly(roleKey).toUpperCase()} WORKSPACE',
+                  style: const TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.2,
+                    color: Color(0xFF8FB8E8),
+                  ),
+                ),
+              ),
+            ),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                children: [
+                  _NavLink(
+                    icon: Icons.dashboard_outlined,
+                    label: 'Overview',
+                    route: homeRoute,
+                    location: location,
+                    exact: true,
+                    onTap: () => navigate(homeRoute),
+                  ),
+                  ...nodes.map(
+                    (node) => _node(context, node, location, navigate),
+                  ),
+                ],
+              ),
+            ),
+            if (user?.hasWorkspaceSwitcher == true)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                child: Theme(
+                  data: Theme.of(context).copyWith(canvasColor: AppColors.navy),
+                  child: DropdownButtonFormField<String>(
+                    initialValue: activeRole,
+                    dropdownColor: AppColors.navy,
+                    iconEnabledColor: Colors.white,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 12.5,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: 'Switch role',
+                      isDense: true,
+                      filled: true,
+                      fillColor: Colors.white.withValues(alpha: 0.08),
+                      labelStyle: const TextStyle(color: Color(0xFFB9D7F8)),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.25),
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(color: Colors.white),
+                      ),
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'TEACHER',
+                        child: Text('Teacher'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'HEAD_TEACHER',
+                        child: Text('Head Teacher'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      ref
+                          .read(activeWorkspaceRoleProvider.notifier)
+                          .switchTo(value);
+                      navigate(
+                        value == 'TEACHER'
+                            ? '/teacher/home'
+                            : '/headteacher/home',
+                      );
+                    },
+                  ),
+                ),
+              ),
+            if (user != null)
+              // Flat user card: taps through to the profile, no accent stripe.
+              Container(
+                margin: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                decoration: BoxDecoration(
+                  border: Border(
+                    top: BorderSide(
+                      color: Colors.white.withValues(alpha: 0.14),
+                    ),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Tooltip(
+                        message: 'My profile',
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(10),
+                          hoverColor: Colors.white10,
+                          onTap: () => navigate('/profile'),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 4,
+                              vertical: 10,
+                            ),
+                            child: Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 17,
+                                  backgroundColor: AppColors.primaryLight,
+                                  child: Text(
+                                    user.username.isEmpty
+                                        ? '?'
+                                        : user.username
+                                              .trim()
+                                              .split(RegExp(r'\s+'))
+                                              .take(2)
+                                              .map((p) => p.isEmpty ? '' : p[0])
+                                              .join()
+                                              .toUpperCase(),
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w900,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        user.username,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w800,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      Text(
+                                        _roleFriendly(roleKey),
+                                        style: const TextStyle(
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.w700,
+                                          color: Color(0xFFB9D7F8),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Sign out',
+                      icon: const Icon(
+                        Icons.logout_rounded,
+                        size: 18,
+                        color: Colors.white,
+                      ),
+                      onPressed: () =>
+                          ref.read(authProvider.notifier).signOut(),
+                    ),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _node(
+    BuildContext context,
+    MenuNode node,
+    String location,
+    void Function(String) navigate,
+  ) {
+    if (!node.isGroup) {
+      return _NavLink(
+        icon: node.icon,
+        label: node.label,
+        route: node.route!,
+        location: location,
+        onTap: () => navigate(node.route!),
+      );
+    }
+    final active = node.children.any(
+      (child) =>
+          child.route != null &&
+          (location == child.route || location.startsWith('${child.route}/')),
+    );
+    return Theme(
+      data: Theme.of(context).copyWith(
+        dividerColor: Colors.transparent,
+        splashColor: Colors.white10,
+        highlightColor: Colors.white10,
+      ),
+      child: ExpansionTile(
+        initiallyExpanded: active,
+        tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+        childrenPadding: const EdgeInsets.only(left: 12),
+        iconColor: Colors.white,
+        collapsedIconColor: AppColors.sidebarInactive,
+        shape: const Border(),
+        collapsedShape: const Border(),
+        leading: _IconChip(icon: node.icon, active: false),
+        title: Text(
+          node.label,
+          style: const TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w800,
+            color: AppColors.sidebarInactive,
+          ),
+        ),
+        children: node.children
+            .map((child) => _node(context, child, location, navigate))
+            .toList(),
+      ),
+    );
+  }
+
+  static String _roleFriendly(String role) => role
+      .replaceAll('_', ' ')
+      .toLowerCase()
+      .split(' ')
+      .map(
+        (word) =>
+            word.isEmpty ? '' : '${word[0].toUpperCase()}${word.substring(1)}',
+      )
+      .join(' ');
+}
+
+class _IconChip extends StatelessWidget {
+  final IconData icon;
+  final bool active;
+  const _IconChip({required this.icon, required this.active});
 
   @override
   Widget build(BuildContext context) {
     return Container(
+      width: 28,
+      height: 28,
+      decoration: BoxDecoration(
+        color: active
+            ? AppColors.primarySurface
+            : Colors.white.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Icon(
+        icon,
+        size: 16,
+        color: active ? AppColors.primaryDark : Colors.white,
+      ),
+    );
+  }
+}
+
+class _NavLink extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String route;
+  final String location;
+  final bool exact;
+  final VoidCallback onTap;
+
+  const _NavLink({
+    required this.icon,
+    required this.label,
+    required this.route,
+    required this.location,
+    required this.onTap,
+    this.exact = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final active = exact
+        ? location == route
+        : (location == route || location.startsWith('$route/'));
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Material(
+        color: active ? Colors.white : Colors.transparent,
+        borderRadius: BorderRadius.circular(11),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(11),
+          hoverColor: Colors.white10,
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+            child: Row(
+              children: [
+                _IconChip(icon: icon, active: active),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w800,
+                      color: active
+                          ? AppColors.primaryDark
+                          : AppColors.sidebarInactive,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LogoIcon extends ConsumerWidget {
+  final double size;
+  const _LogoIcon({this.size = 32});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final repository = ref.watch(schoolSettingsRepositoryProvider);
+    final branding = ref
+        .watch(schoolBrandingProvider)
+        .maybeWhen(data: (value) => value, orElse: () => null);
+    final url = repository.publicLogoUrl(branding?.logoPath);
+    return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
-        gradient: AppGradients.primaryHero,
-        borderRadius: Radii.smBr,
-        boxShadow: AppShadows.card,
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(11),
       ),
-      child: Center(
-        child: Text(
-          AppStrings.appInitial,
-          style: TextStyle(
-            fontFamily: AppText.fontHeading,
-            fontSize: size * 0.55,
-            fontWeight: FontWeight.w900,
-            color: Colors.white,
-          ),
-        ),
+      clipBehavior: Clip.antiAlias,
+      alignment: Alignment.center,
+      child: url != null
+          ? Padding(
+              padding: const EdgeInsets.all(4),
+              child: Image.network(
+                url,
+                fit: BoxFit.contain,
+                errorBuilder: (_, _, _) => _initials(branding?.schoolName),
+              ),
+            )
+          : _initials(branding?.schoolName),
+    );
+  }
+
+  Widget _initials(String? name) {
+    final words = (name ?? AppStrings.appName)
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((w) => w.isNotEmpty)
+        .toList();
+    final text = words.isEmpty
+        ? AppStrings.appInitial
+        : words.take(2).map((w) => w[0]).join();
+    return Text(
+      text.toUpperCase(),
+      style: TextStyle(
+        fontSize: size * .38,
+        fontWeight: FontWeight.w900,
+        color: AppColors.primaryDark,
       ),
     );
   }
