@@ -84,3 +84,12 @@ android/app/key.properties
 *.jks
 android/app/google-services.json
 ios/Runner/GoogleService-Info.plist
+
+# Internal working documents: kept locally, not published
+docs/E2E_*
+docs/*Testing_Guide*
+docs/School_Workflow_Guide_*
+docs/Remaining_Issues_*
+docs/superpowers/
+docs/*.pdf
+users n passwords.txt
