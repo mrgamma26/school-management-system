@@ -77,10 +77,7 @@ class ClassHistoryPage extends ConsumerWidget {
                     UiColumn('To', flex: 10, hideOnPhone: true),
                     UiColumn('Status', width: 90),
                   ],
-                  rows: [
-                    for (final row in history)
-                      _historyRow(row),
-                  ],
+                  rows: [for (final row in history) _historyRow(row)],
                 ),
         ),
       ],

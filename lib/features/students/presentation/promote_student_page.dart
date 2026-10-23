@@ -165,7 +165,10 @@ class _PromoteStudentPageState extends ConsumerState<PromoteStudentPage> {
     );
 
     final saveEnabled =
-        !(blocked || _saving || _selectedYear == null || _selectedClass == null);
+        !(blocked ||
+            _saving ||
+            _selectedYear == null ||
+            _selectedClass == null);
     final blockMessage = blockAsync.maybeWhen(
       data: (message) => message,
       orElse: () => null,
@@ -259,10 +262,7 @@ class _PromoteStudentPageState extends ConsumerState<PromoteStudentPage> {
           checked: _selectedYear != null,
         ),
         CheckRow(label: 'Class chosen', checked: _selectedClass != null),
-        CheckRow(
-          label: 'No pending progression review',
-          checked: !blocked,
-        ),
+        CheckRow(label: 'No pending progression review', checked: !blocked),
       ],
     );
   }

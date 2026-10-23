@@ -167,14 +167,16 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                 DataTableCard(
                   columns: [
                     const UiColumn('Notice', flex: 20),
-                    const UiColumn('Recipient / sender', flex: 12, hideOnPhone: true),
+                    const UiColumn(
+                      'Recipient / sender',
+                      flex: 12,
+                      hideOnPhone: true,
+                    ),
                     const UiColumn('Sent', flex: 8, hideOnPhone: true),
                     const UiColumn('Status', flex: 8),
                     UiColumn(isGuardian ? 'Action' : '', width: 100),
                   ],
-                  rows: [
-                    for (final n in visible) _row(context, n, isGuardian),
-                  ],
+                  rows: [for (final n in visible) _row(context, n, isGuardian)],
                 ),
                 PagerBar(
                   total: notifications.length,
@@ -198,73 +200,70 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
     final isUnread = n['readstatus'] == 'UNREAD';
     final guardian = n['guardian'] as Map<String, dynamic>?;
     final sender = n['staff'] as Map<String, dynamic>?;
-    return UiTableRow(
-      [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              n['subject'] as String,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: isUnread ? FontWeight.w900 : FontWeight.w700,
-              ),
+    return UiTableRow([
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            n['subject'] as String,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: isUnread ? FontWeight.w900 : FontWeight.w700,
             ),
+          ),
+          Text(
+            n['message'] as String,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF64758B),
+            ),
+          ),
+        ],
+      ),
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (guardian != null)
+            UiCellText('To ${guardian['firstname']} ${guardian['lastname']}'),
+          if (sender != null)
             Text(
-              n['message'] as String,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+              'From ${sender['firstname']} ${sender['lastname']}',
               style: const TextStyle(
-                fontSize: 12,
+                fontSize: 11.5,
                 fontWeight: FontWeight.w600,
                 color: Color(0xFF64758B),
               ),
             ),
-          ],
-        ),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (guardian != null)
-              UiCellText('To ${guardian['firstname']} ${guardian['lastname']}'),
-            if (sender != null)
-              Text(
-                'From ${sender['firstname']} ${sender['lastname']}',
-                style: const TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF64758B),
-                ),
-              ),
-          ],
-        ),
-        UiCellText(
-          formatUiDate(DateTime.tryParse('${n['createdat']}')?.toLocal()),
-        ),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: isUnread
-              ? const StatusPill('Unread', tone: StatusTone.info)
-              : const StatusPill('Read', tone: StatusTone.neutral),
-        ),
-        isGuardian && isUnread
-            ? TextButton(
-                child: const Text('Mark read'),
-                onPressed: () async {
-                  await CommunicationsRepository().markRead(
-                    n['notificationid'] as String,
-                  );
-                  ref.invalidate(_notificationsProvider);
-                },
-              )
-            : const SizedBox.shrink(),
-      ],
-      onTap: () => _showDetail(context, n),
-    );
+        ],
+      ),
+      UiCellText(
+        formatUiDate(DateTime.tryParse('${n['createdat']}')?.toLocal()),
+      ),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: isUnread
+            ? const StatusPill('Unread', tone: StatusTone.info)
+            : const StatusPill('Read', tone: StatusTone.neutral),
+      ),
+      isGuardian && isUnread
+          ? TextButton(
+              child: const Text('Mark read'),
+              onPressed: () async {
+                await CommunicationsRepository().markRead(
+                  n['notificationid'] as String,
+                );
+                ref.invalidate(_notificationsProvider);
+              },
+            )
+          : const SizedBox.shrink(),
+    ], onTap: () => _showDetail(context, n));
   }
 
   void _showDetail(BuildContext context, Map<String, dynamic> n) {

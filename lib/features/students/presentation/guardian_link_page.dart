@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'guardian_relationships.dart';
 import '../../../../core/errors/app_exception.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/student_repository.dart';
@@ -71,7 +72,7 @@ class _GuardianLinkPageState extends ConsumerState<GuardianLinkPage> {
     }
 
     Guardian? selected;
-    String relationship = 'Parent';
+    String relationship = defaultGuardianRelationship;
 
     await showDialog<void>(
       context: context,
@@ -92,10 +93,13 @@ class _GuardianLinkPageState extends ConsumerState<GuardianLinkPage> {
                 onChanged: (v) => setS(() => selected = v),
               ),
               const SizedBox(height: 12),
-              TextFormField(
+              DropdownButtonFormField<String>(
                 initialValue: relationship,
                 decoration: const InputDecoration(labelText: 'Relationship'),
-                onChanged: (v) => relationship = v,
+                items: relationshipMenuItems(relationship),
+                onChanged: (v) {
+                  if (v != null) relationship = v;
+                },
               ),
             ],
           ),
@@ -211,9 +215,7 @@ class _GuardianLinkPageState extends ConsumerState<GuardianLinkPage> {
               UiColumn('Relationship', flex: 10),
               UiColumn('', width: 48),
             ],
-            rows: [
-              for (final link in _links) _linkRow(link),
-            ],
+            rows: [for (final link in _links) _linkRow(link)],
           ),
       ],
     );

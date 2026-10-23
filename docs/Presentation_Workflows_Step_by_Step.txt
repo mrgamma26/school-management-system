@@ -1,0 +1,156 @@
+SCHOOL MANAGEMENT SYSTEM - STEP BY STEP WORKFLOWS FOR THE PRESENTATION
+Edition: 23 October 2026
+
+Order of the demonstration:
+1. Administrator sets up the year, subjects, staff and classes
+2. Administrator registers a student with a Mother or Father as guardian
+3. Accountant sets fees, records a payment, shows credit for an overpayment, and agrees a payment arrangement
+4. Teacher enters marks for Term 1, Term 2 or Term 3
+5. Head Teacher reviews, returns or publishes results
+6. Administrator continues a class to the next term
+7. Administrator sends a class that finished Term 3 to the Head Teacher for progression
+8. Head Teacher records the year-end decision (promote or retain)
+9. Guardian views payments and the report card
+
+Before you start: open the school web address in Chrome or Edge. Each person signs in with their own email and password.
+
+
+WORKFLOW 1 - ADMINISTRATOR: SET UP THE SCHOOL YEAR
+
+Step 1. Sign in as the Administrator.
+Step 2. In the left menu open Academics, then Academic Years.
+Step 3. Press Add Academic Year. Enter the start and end dates of the year and of Term 1, Term 2 and Term 3. Press Save.
+Step 4. Press Make current on the new year, then Set as current on Term 1.
+Step 5. Open Academics, then Subjects. Press Add subject, type the subject name (for example Mathematics) and press Save. Repeat for every subject.
+Step 6. Open Staff. Press Add Staff. Fill in the person's details, choose the role Teacher or Accountant, and for a teacher tick the subjects under Subjects they teach. Press Save. Write down the temporary password that is shown once and give it to the person.
+Step 7. Open Academics, then Class Setup. Press New class and type a name that starts with the form, for example Form 1A. Press Save.
+Step 8. In Class Setup choose the class, press Add subjects, tick the subjects and press Save.
+Step 9. In each subject row choose the teacher from the teacher list. Only teachers ticked for that subject are offered.
+Result: the class has subjects and a teacher for each subject, for Term 1, Term 2 and Term 3.
+
+
+WORKFLOW 2 - ADMINISTRATOR: REGISTER A STUDENT
+
+Step 1. Open Students and press Register Student.
+Step 2. Fill in the student's first name, last name, date of birth and gender.
+Step 3. Under Current class choose the academic period (year and Term 1) and the class, for example Form 1A.
+Step 4. Under Guardian and relationship either press Link Existing Parent or Guardian and choose them, or fill in a new guardian's details under Or create a new guardian (name, phone and email).
+Step 5. In Relationship choose how the guardian is related to the student: Mother, Father, Sister, Brother, Grandmother, Grandfather, Auntie, Uncle, Guardian or Other. A student can have more than one guardian; press Add Second Guardian (Optional) for another.
+Step 6. Press Save. If a new guardian was created, write down the guardian's temporary password and give it to them.
+Result: the student is placed in the class for Term 1 and enrolled in all the class subjects. The guardian can sign in.
+
+
+WORKFLOW 3 - ACCOUNTANT: FEES, PAYMENTS, CREDIT AND ARRANGEMENTS
+
+Part A - Set the fee
+Step 1. Sign in as the Accountant.
+Step 2. Open Finance, then Fee Structure. Press Add Fee.
+Step 3. Choose the year, term and class, type the fee type (for example Tuition) and the amount. Press Save.
+
+Part B - Record a payment
+Step 4. Open Finance, then Student Accounts. Press the student's row.
+Step 5. Press Record payment. Choose the fee, type the amount, choose the method (Cash, Bank deposit or Mobile money) and enter the reference if asked. The date defaults to today (Malawi date).
+Step 6. Check the preview: Current balance and New balance are shown.
+Step 7. Press Post payment. The receipt is shown with its receipt number. Print or email it if needed.
+
+Part C - Overpayment kept as credit
+Step 8. If the amount is more than the fee still owes, the screen says the extra will be kept as credit on the account. Post the payment.
+Step 9. The account now shows "In credit" with the amount, and the fee row shows Credit with the extra amount. The credit is used against the next fees.
+
+Part D - Payment arrangement for a family that pays in parts
+Step 10. Open Finance, then Payment Arrangements. Press New arrangement.
+Step 11. Choose the student. For each instalment press Due date, pick the date, and type the amount. Use Add instalment for more rows.
+Step 12. Press Create arrangement.
+Step 13. Record each payment as normal (Part B). Each instalment turns Paid in order. The arrangement becomes Completed when the total is paid.
+Note: dates for missed instalments use the Malawi date.
+
+
+WORKFLOW 4 - TEACHER: ENTER MARKS FOR TERM 1, TERM 2 OR TERM 3
+
+Step 1. Sign in as the Teacher.
+Step 2. Open Assessments (Enter marks).
+Step 3. In Term choose the term: Term 1, Term 2 or Term 3 of the year.
+Step 4. In Class and subject choose the class and subject you teach in that term.
+Step 5. Press New assessment. Type the name (for example End of Term Exam), choose the type and the maximum score, and press Save.
+Step 6. Type each student's mark. Marks save automatically as a draft. Use Mark absent for a student who missed it.
+Step 7. Press Preview result sheet to check the marks.
+Step 8. Press Submit to Head Teacher. The marks become read-only.
+Result: the sheet waits for the Head Teacher's review.
+
+
+WORKFLOW 5 - HEAD TEACHER: REVIEW, RETURN OR PUBLISH RESULTS
+
+Step 1. Sign in as the Head Teacher.
+Step 2. Open Results, then Review Workspace. Press the submitted sheet.
+Step 3a. If a mark is wrong: press Return with reason, type the reason (at least 10 characters) and press Return sheet. The marks go back to draft and the teacher is notified. The teacher corrects them and submits again (Workflow 4, Step 8).
+Step 3b. If the sheet is correct: press Approve and publish.
+Result: published results are final. Guardians see them when the student's balance is zero or in credit. A later change needs a correction request from the teacher and approval by the Head Teacher.
+
+
+WORKFLOW 6 - ADMINISTRATOR: CONTINUE A CLASS TO THE NEXT TERM
+
+Use this at the start of Term 2 and at the start of Term 3.
+Step 1. Sign in as the Administrator.
+Step 2. Open Students and press Continue to next term.
+Step 3. In Class choose the class, for example Form 1A.
+Step 4. In Continue to term choose the new term, for example 2026/2027 Term 2.
+Step 5. Press Continue students.
+Result: the message shows how many students were continued. Every student who was in the class for the previous term is now placed in the same class for the new term and enrolled in all its subjects. Teachers can enter marks for them in the new term.
+
+
+WORKFLOW 7 - ADMINISTRATOR: SEND A CLASS THAT FINISHED TERM 3 FOR PROGRESSION
+
+Use this at the end of the school year, for every class (Form 1, Form 2, Form 3 and Form 4), after the Term 3 results have been submitted. The next school year must already exist (Workflow 1, Step 3), because its Term 1 is the option you choose.
+Step 1. Open Students and press Continue to next term.
+Step 2. In Class choose the class, for example Form 3A.
+Step 3. In Continue to term choose the Term 1 of the next year, marked "(from Term 3 via Head Teacher progression)".
+Step 4. Press Continue students.
+Result: every student of the class gets a year-end progression review with their average, and every Head Teacher receives the notification "Progression review requested". Students are not moved yet: the Head Teacher decides.
+
+
+WORKFLOW 8 - HEAD TEACHER: YEAR-END PROGRESSION DECISION
+
+Step 1. Sign in as the Head Teacher. Open Notifications and read "Progression review requested".
+Step 2. Open Progression Reviews and choose the period of the class (year, form and Term 3).
+Step 3. The table lists each student with the average.
+   - Progression happens only after the Term 3 results are posted. Until then the review shows AWAITING TERM 3 and the average so far is still recorded.
+   - When all three terms have results, the annual average is shown.
+   - A student who joined in Term 2 or Term 3, or has no results for an earlier term, is judged on the terms that have results. The missing terms are shown as Absent, and the average reads for example "62.5 (2 of 3 terms, others absent)".
+   - Once Term 3 results are posted, the Promote and Retain buttons are available. The pass mark is 50 percent: at or above it the recommendation is PROMOTE, below it the student goes to review.
+Step 4. To see the detail press Calculate Review, choose the student and press Calculate / Refresh: each term's average (or Absent), the annual average or average so far, the pass mark, the recommendation, and whether Term 3 results are posted.
+Step 5. Press Promote to move the student up, or Retain to keep the student in the same form. Type the reason and confirm.
+Result: a promoted Form 1 student is placed in Form 2 for Term 1 of the next year (Form 2 to Form 3, Form 3 to Form 4). A retained student stays in the same form. All history is kept.
+Note on Form 4: there is no Form 5, so Promote is refused for Form 4 students. Their year-end average is still recorded; use Retain only for a student who repeats Form 4.
+
+Optional - Student Status Reviews: for a student who may leave the school, open Student Status Reviews, press Flag Student, choose the student, enter the average, then record Retain or Weed Out with a reason.
+
+
+WORKFLOW 9 - GUARDIAN: PAYMENTS AND REPORT CARD
+
+Step 1. Sign in as the Guardian (first sign-in asks for a new password).
+Step 2. Open My Children to see the linked children and their classes.
+Step 3. Open Payments to see each payment and the current balance (or credit).
+Step 4. Open Progress and Report Cards and choose the child.
+Result: published results are shown when the balance is zero or in credit. If money is owed, the screen says Locked and shows the amount owed.
+Step 5. Open Notifications and press Mark read on a message from the school.
+
+
+QUICK ANSWERS DURING THE PRESENTATION
+
+Who can do what:
+- Super User: everything, plus system users and the audit log.
+- Administrator: years, subjects, staff, classes, students, continue to next term, send for progression.
+- Head Teacher: review, return and publish results, corrections, progression and status decisions.
+- Teacher: marks for own classes in any term, correction requests, comments.
+- Accountant: fees, payments, credit, arrangements, reversals.
+- Guardian: own children, payments, published report cards, notifications.
+
+Rules the system enforces:
+- One teacher per subject per class; a teacher can teach several subjects.
+- Submitted marks are read-only; published marks change only through an approved correction.
+- Posted payments are never edited or deleted; a mistake is undone with a payment reversal and a reason.
+- Paying more than is owed is kept as credit.
+- Guardian relationships: Mother, Father, Sister, Brother, Grandmother, Grandfather, Auntie, Uncle, Guardian or Other.
+- All payment and arrangement dates use the Malawi date.
+- Progression is decided only after Term 3 results are posted. Earlier terms without results count as absent, so a student who joined in Term 2 or Term 3 can still be promoted on the terms they have. The average so far is recorded at every step.
+- Nothing is deleted when students move: every placement and decision is kept in the history.

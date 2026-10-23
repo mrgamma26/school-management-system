@@ -59,13 +59,14 @@ class _UsersByRoleChart extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return AsyncChartPanel<List<ChartSlice>>(
-      title: 'Users by role',
-      note: 'All accounts',
+      title: 'System user accounts by role',
+      note: 'Active and inactive sign-in accounts for staff and guardians',
       value: ref.watch(usersByRoleProvider),
       isEmpty: (d) => d.isEmpty,
       builder: (d) => UiDonutChart(
         slices: d,
-        description: 'Accounts grouped by role',
+        description:
+            'Number of sign-in accounts held by each role: Super User, Administrator, Head Teacher, Teacher, Accountant and Guardian',
         centerValue: groupedInt(d.fold<double>(0, (a, s) => a + s.value)),
         centerCaption: 'accounts',
       ),
@@ -79,13 +80,14 @@ class _AuditActivityChart extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return AsyncChartPanel<List<ChartPoint>>(
-      title: 'Audit activity',
-      note: 'Entries per week, last 8 weeks',
+      title: 'Recorded system actions per week',
+      note: 'Audit log entries (creations, changes, decisions), last 8 weeks',
       value: ref.watch(auditActivityProvider),
       isEmpty: (d) => d.every((p) => p.value <= 0),
       builder: (d) => UiLineChart(
         points: d,
-        description: 'Audit log entries per week, weeks starting on the date shown',
+        description:
+            'Audit log entries per week, weeks starting on the date shown',
       ),
     );
   }
@@ -103,15 +105,16 @@ class _EmailDeliveryChart extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return AsyncChartPanel<StackedChartData>(
-      title: 'Email delivery',
-      note: 'Per week, last 6 weeks',
+      title: 'Notification emails sent to guardians and staff per week',
+      note: 'Sent, failed and pending emails, last 6 weeks',
       noteOf: (d) => d.capped ? 'Latest 3,000 emails, last 6 weeks' : null,
       value: ref.watch(emailDeliveryProvider),
       isEmpty: (d) => d.bars.every((b) => b.total <= 0),
       builder: (d) => UiBarChart(
         data: d.bars,
         series: _series,
-        description: 'Emails per week by delivery status, weeks starting on the date shown',
+        description:
+            'Emails per week by delivery status, weeks starting on the date shown',
       ),
     );
   }
@@ -125,13 +128,14 @@ class _StudentsPerFormChart extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return AsyncChartPanel<List<ChartPoint>>(
-      title: 'Students per form',
-      note: 'Enrolled learners',
+      title: 'Enrolled students in each form this school year',
+      note: 'Active students placed in Form 1, Form 2, Form 3 and Form 4',
       value: ref.watch(studentsPerFormProvider),
       isEmpty: (d) => d.isEmpty,
       builder: (d) => UiBarChart(
         data: [for (final p in d) BarDatum.single(p.label, p.value)],
-        description: 'Enrolled students in each form',
+        description:
+            'Number of active students placed in each form (Form 1 to Form 4) this school year',
       ),
     );
   }
@@ -143,13 +147,15 @@ class _EnrolmentStatusChart extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return AsyncChartPanel<List<ChartSlice>>(
-      title: 'Enrolment status',
-      note: 'All student records',
+      title: 'Students by enrolment status',
+      note:
+          'All student records: active, graduated, withdrawn and other statuses',
       value: ref.watch(enrolmentStatusProvider),
       isEmpty: (d) => d.isEmpty,
       builder: (d) => UiDonutChart(
         slices: d,
-        description: 'Students by enrolment status',
+        description:
+            'Number of student records in each enrolment status: active, graduated, withdrawn and others',
         centerValue: groupedInt(d.fold<double>(0, (a, s) => a + s.value)),
         centerCaption: 'students',
       ),
@@ -165,8 +171,9 @@ class _SubjectAverageChart extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return AsyncChartPanel<CountedChartData>(
-      title: 'Average by subject',
-      note: 'Percent of marks available',
+      title: 'Average student mark in each subject',
+      note:
+          'Average percentage across all recorded assessment marks per subject',
       noteOf: _marksNote,
       value: ref.watch(subjectAveragesProvider),
       isEmpty: (d) => d.points.isEmpty,
@@ -176,7 +183,8 @@ class _SubjectAverageChart extends ConsumerWidget {
         data: [for (final p in d.points) BarDatum.single(p.label, p.value)],
         format: (v) => '${v.toStringAsFixed(1)}%',
         labelFormat: (v) => '${v.round()}%',
-        description: 'Average mark in percent for each subject',
+        description:
+            'Average mark, in percent of the maximum score, of all students in each subject',
       ),
     );
   }
@@ -188,13 +196,14 @@ class _ProgressionDecisionsChart extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return AsyncChartPanel<List<ChartSlice>>(
-      title: 'Progression decisions',
-      note: 'Reviews on record',
+      title: 'Year-end progression decisions by the Head Teacher',
+      note: 'Students promoted, retained or awaiting a decision',
       value: ref.watch(progressionDecisionsProvider),
       isEmpty: (d) => d.isEmpty,
       builder: (d) => UiDonutChart(
         slices: d,
-        description: 'Progression review decisions',
+        description:
+            'Number of year-end progression reviews that are promoted, retained or still pending a Head Teacher decision',
         centerValue: groupedInt(d.fold<double>(0, (a, s) => a + s.value)),
         centerCaption: 'reviews',
       ),
@@ -210,8 +219,8 @@ class _MarkDistributionChart extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return AsyncChartPanel<CountedChartData>(
-      title: 'Mark distribution',
-      note: 'Bands of 10 percent',
+      title: 'Spread of student assessment marks',
+      note: 'Number of marks in each 10 percent band (0-9, 10-19 ... 90-100)',
       noteOf: _marksNote,
       value: ref.watch(markDistributionProvider),
       isEmpty: (d) => d.total == 0,
@@ -229,13 +238,14 @@ class _SubmissionByClassChart extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return AsyncChartPanel<List<ProgressDatum>>(
-      title: 'Marks submitted by class',
-      note: 'Recorded marks',
+      title: 'Teacher marks submitted to the Head Teacher, per class',
+      note: 'Share of entered marks already submitted for review, by class',
       value: ref.watch(submissionByClassProvider),
       isEmpty: (d) => d.isEmpty,
       builder: (d) => UiProgressList(
         items: d,
-        description: 'Share of recorded marks already submitted, per class',
+        description:
+            'Percentage of the marks teachers have entered that are already submitted to the Head Teacher, for each class',
       ),
     );
   }
@@ -249,16 +259,19 @@ class _PaymentsPerMonthChart extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return AsyncChartPanel<PaymentChartData>(
-      title: 'Payments per month',
-      note: 'Last 6 months, reversals excluded',
-      noteOf: (d) => 'Last 6 months · ${_mwk(d.total)}${d.capped ? ' (latest rows only)' : ''}',
+      title: 'School fee payments received from guardians per month',
+      note:
+          'Total MWK collected for all students each month, last 6 months, reversed payments excluded',
+      noteOf: (d) =>
+          'Last 6 months · ${_mwk(d.total)}${d.capped ? ' (latest rows only)' : ''}',
       value: ref.watch(paymentSummaryProvider),
       isEmpty: (d) => d.total <= 0,
       builder: (d) => UiLineChart(
         points: d.months,
         format: _mwk,
         labelFormat: compactNumber,
-        description: 'Amount collected in each month',
+        description:
+            'Total school fees in Malawi Kwacha paid by guardians for all students in each of the last six months',
       ),
     );
   }
@@ -270,14 +283,16 @@ class _PaymentMethodsChart extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return AsyncChartPanel<PaymentChartData>(
-      title: 'Payments by method',
-      note: 'Last 6 months',
+      title: 'School fee payments by payment method',
+      note:
+          'MWK received by cash, bank deposit and mobile money, last 6 months',
       value: ref.watch(paymentSummaryProvider),
       isEmpty: (d) => d.methods.isEmpty,
       builder: (d) => UiDonutChart(
         slices: d.methods,
         format: _mwk,
-        description: 'Amount collected by payment method',
+        description:
+            'Total school fees in Malawi Kwacha received through each payment method over the last six months',
         centerValue: compactNumber(d.total),
         centerCaption: 'MWK',
       ),
@@ -293,15 +308,17 @@ class _GuardianPaymentsChart extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return AsyncChartPanel<PaymentChartData>(
-      title: 'Payments per month',
-      note: 'Linked children, last 6 months',
+      title: 'Your school fee payments for your children per month',
+      note:
+          'MWK you paid each month for the students linked to you, last 6 months',
       value: ref.watch(guardianPaymentSummaryProvider),
       isEmpty: (d) => d.total <= 0,
       builder: (d) => UiBarChart(
         data: [for (final p in d.months) BarDatum.single(p.label, p.value)],
         format: _mwk,
         labelFormat: compactNumber,
-        description: 'Fees paid in each month for your linked children',
+        description:
+            'Total school fees in Malawi Kwacha you paid in each of the last six months for the students linked to your account',
       ),
     );
   }

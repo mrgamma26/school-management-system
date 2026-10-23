@@ -42,7 +42,9 @@ Future<CappedRows> _fetchPaged(
 /// A to-one embed arrives as a Map; tolerate a one-element List too.
 Map<String, dynamic>? _one(dynamic value) {
   if (value is Map<String, dynamic>) return value;
-  if (value is List && value.isNotEmpty && value.first is Map<String, dynamic>) {
+  if (value is List &&
+      value.isNotEmpty &&
+      value.first is Map<String, dynamic>) {
     return value.first as Map<String, dynamic>;
   }
   return null;
@@ -57,12 +59,23 @@ String _titleCase(String raw) => raw
     .join(' ');
 
 const _monthNames = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
 ];
 
 /// Monday 00:00 of the week containing [d] (local time).
-DateTime _mondayOf(DateTime d) => DateTime(d.year, d.month, d.day - (d.weekday - 1));
+DateTime _mondayOf(DateTime d) =>
+    DateTime(d.year, d.month, d.day - (d.weekday - 1));
 
 /// The last [count] week starts, oldest first, ending with the current week.
 List<DateTime> weekStarts(int count, [DateTime? now]) {
@@ -159,7 +172,9 @@ final emailDeliveryProvider = FutureProvider.autoDispose<StackedChartData>((
         .order('email_log_id')
         .range(from, to),
   );
-  final buckets = [for (final _ in starts) <double>[0, 0, 0]];
+  final buckets = [
+    for (final _ in starts) <double>[0, 0, 0],
+  ];
   for (final row in result.rows) {
     final queued = DateTime.tryParse('${row['queued_at']}')?.toLocal();
     if (queued == null) continue;
@@ -198,9 +213,9 @@ final studentsPerFormProvider = FutureProvider.autoDispose<List<ChartPoint>>((
   );
   final byForm = <String, Set<String>>{};
   for (final row in result.rows) {
-    final status = _one(row['student'])?['enrollmentstatus']
-        ?.toString()
-        .toLowerCase();
+    final status = _one(
+      row['student'],
+    )?['enrollmentstatus']?.toString().toLowerCase();
     if (status != 'enrolled') continue;
     final form = _one(row['class'])?['form'];
     final key = form == null ? '' : '$form';
@@ -218,9 +233,7 @@ final studentsPerFormProvider = FutureProvider.autoDispose<List<ChartPoint>>((
   return [
     for (final k in keys)
       ChartPoint(
-        k.isEmpty
-            ? 'No form'
-            : (int.tryParse(k) != null ? 'Form $k' : k),
+        k.isEmpty ? 'No form' : (int.tryParse(k) != null ? 'Form $k' : k),
         byForm[k]!.length.toDouble(),
       ),
   ];
@@ -285,55 +298,56 @@ class CountedChartData {
 }
 
 /// Average percentage per subject, best first (at most 10 subjects).
-final subjectAveragesProvider =
-    FutureProvider.autoDispose<CountedChartData>((ref) async {
-      final result = await ref.watch(gradeRowsProvider.future);
-      final bySubject = <String, List<double>>{};
-      var used = 0;
-      for (final row in result.rows) {
-        final pct = _percent(row);
-        if (pct == null) continue;
-        final classSubject = _one(_one(row['assessment'])?['classsubject']);
-        final name = _one(classSubject?['subject'])?['subjectname']?.toString();
-        if (name == null || name.isEmpty) continue;
-        bySubject.putIfAbsent(name, () => []).add(pct);
-        used++;
-      }
-      final points = [
-        for (final e in bySubject.entries)
-          ChartPoint(
-            e.key,
-            double.parse(
-              (e.value.reduce((a, b) => a + b) / e.value.length)
-                  .toStringAsFixed(1),
-            ),
-          ),
-      ]..sort((a, b) => b.value.compareTo(a.value));
-      return CountedChartData(points.take(10).toList(), used, result.capped);
-    });
+final subjectAveragesProvider = FutureProvider.autoDispose<CountedChartData>((
+  ref,
+) async {
+  final result = await ref.watch(gradeRowsProvider.future);
+  final bySubject = <String, List<double>>{};
+  var used = 0;
+  for (final row in result.rows) {
+    final pct = _percent(row);
+    if (pct == null) continue;
+    final classSubject = _one(_one(row['assessment'])?['classsubject']);
+    final name = _one(classSubject?['subject'])?['subjectname']?.toString();
+    if (name == null || name.isEmpty) continue;
+    bySubject.putIfAbsent(name, () => []).add(pct);
+    used++;
+  }
+  final points = [
+    for (final e in bySubject.entries)
+      ChartPoint(
+        e.key,
+        double.parse(
+          (e.value.reduce((a, b) => a + b) / e.value.length).toStringAsFixed(1),
+        ),
+      ),
+  ]..sort((a, b) => b.value.compareTo(a.value));
+  return CountedChartData(points.take(10).toList(), used, result.capped);
+});
 
 /// Marks in ten percentage bands (0-9 ... 90-100).
-final markDistributionProvider =
-    FutureProvider.autoDispose<CountedChartData>((ref) async {
-      final result = await ref.watch(gradeRowsProvider.future);
-      final bins = List<double>.filled(10, 0);
-      var used = 0;
-      for (final row in result.rows) {
-        final pct = _percent(row);
-        if (pct == null) continue;
-        final index = (pct / 10).floor().clamp(0, 9);
-        bins[index] += 1;
-        used++;
-      }
-      return CountedChartData(
-        [
-          for (var i = 0; i < 10; i++)
-            ChartPoint(i == 9 ? '90-100' : '${i * 10}-${i * 10 + 9}', bins[i]),
-        ],
-        used,
-        result.capped,
-      );
-    });
+final markDistributionProvider = FutureProvider.autoDispose<CountedChartData>((
+  ref,
+) async {
+  final result = await ref.watch(gradeRowsProvider.future);
+  final bins = List<double>.filled(10, 0);
+  var used = 0;
+  for (final row in result.rows) {
+    final pct = _percent(row);
+    if (pct == null) continue;
+    final index = (pct / 10).floor().clamp(0, 9);
+    bins[index] += 1;
+    used++;
+  }
+  return CountedChartData(
+    [
+      for (var i = 0; i < 10; i++)
+        ChartPoint(i == 9 ? '90-100' : '${i * 10}-${i * 10 + 9}', bins[i]),
+    ],
+    used,
+    result.capped,
+  );
+});
 
 /// Share of recorded marks already submitted, per class (at most 8 classes).
 final submissionByClassProvider =

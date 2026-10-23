@@ -194,7 +194,6 @@ class PaymentArrangementsPage extends ConsumerWidget {
   }
 }
 
-
 class _InstalmentDraft {
   DateTime? dueDate;
   final amount = TextEditingController();

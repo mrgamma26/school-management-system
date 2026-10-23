@@ -92,7 +92,11 @@ class AccountantDashboard extends ConsumerWidget {
         ],
         groups: const [
           DashboardGroup('Finance', [
-            DashboardLink('All Payments', Icons.payments_outlined, '/finance/payments'),
+            DashboardLink(
+              'All Payments',
+              Icons.payments_outlined,
+              '/finance/payments',
+            ),
             DashboardLink(
               'Fee Structures',
               Icons.price_change_outlined,

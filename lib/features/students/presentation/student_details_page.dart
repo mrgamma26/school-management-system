@@ -4,8 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/school_role_access.dart';
 import '../../../core/errors/app_exception.dart';
-import '../../../core/widgets/app_widgets.dart'
-    show ErrorState, LoadingState;
+import '../../../core/widgets/app_widgets.dart' show ErrorState, LoadingState;
 import '../../../widgets/ui_kit.dart';
 import '../../authentication/presentation/providers/auth_provider.dart';
 import '../data/student_repository.dart';

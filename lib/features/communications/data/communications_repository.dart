@@ -400,7 +400,10 @@ class CommunicationsRepository {
           .from('staff')
           .select('staffid')
           .eq('userid', userId)
-          .single();
+          .maybeSingle();
+      if (row == null) {
+        throw const NotFoundException('This account has no staff profile.');
+      }
       return row['staffid'] as String;
     } catch (e) {
       throw _mapException(e);
@@ -416,7 +419,10 @@ class CommunicationsRepository {
           .from('guardian')
           .select('guardianid')
           .eq('userid', userId)
-          .single();
+          .maybeSingle();
+      if (row == null) {
+        throw const NotFoundException('This account has no guardian profile.');
+      }
       return row['guardianid'] as String;
     } catch (e) {
       throw _mapException(e);

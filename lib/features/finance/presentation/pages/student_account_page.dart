@@ -537,15 +537,15 @@ class _StudentAccountPageState extends ConsumerState<StudentAccountPage> {
         ),
         if (p.overFee > 0)
           UiNotice(
-            'This is ${formatMwk(p.overFee)} more than is still owed on ${fee?.feeType ?? 'this fee'}.',
-            tone: StatusTone.warning,
-            icon: Icons.warning_amber_rounded,
+            'This is ${formatMwk(p.overFee)} more than is still owed on ${fee?.feeType ?? 'this fee'}. The extra will be kept as credit on the account.',
+            tone: StatusTone.info,
+            icon: Icons.savings_outlined,
           ),
         if (p.createsCredit)
-          const UiNotice(
-            'After this payment the account would be in credit (negative balance). Check the amount before posting.',
-            tone: StatusTone.warning,
-            icon: Icons.warning_amber_rounded,
+          UiNotice(
+            'After this payment the account will be in credit by ${formatMwk(-p.newBalance)}. The credit is used against the next fees.',
+            tone: StatusTone.info,
+            icon: Icons.savings_outlined,
           ),
       ],
     );
@@ -583,7 +583,12 @@ class _StudentAccountPageState extends ConsumerState<StudentAccountPage> {
                         UiCellText(s.fee.feeType, bold: true),
                         UiCellText(formatMwk(s.fee.amount)),
                         UiCellText(formatMwk(s.paid)),
-                        UiCellText(formatMwk(s.remaining), bold: true),
+                        UiCellText(
+                          s.credit > 0
+                              ? 'Credit ${formatMwk(s.credit)}'
+                              : formatMwk(s.remaining),
+                          bold: true,
+                        ),
                       ]),
                   ],
                 ),

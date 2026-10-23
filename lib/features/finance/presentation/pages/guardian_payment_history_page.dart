@@ -195,7 +195,8 @@ class GuardianPaymentList extends ConsumerWidget {
       ),
       error: (e, _) => ErrorState(
         error: e,
-        onRetry: () => ref.invalidate(guardianStudentPaymentsProvider(studentId)),
+        onRetry: () =>
+            ref.invalidate(guardianStudentPaymentsProvider(studentId)),
       ),
       data: (payments) {
         if (payments.isEmpty) {

@@ -785,6 +785,17 @@ class _AssessmentsPageState extends ConsumerState<AssessmentsPage> {
     final selected = list.any((a) => a.id == _assessment?.id)
         ? _assessment!.id
         : null;
+    // Marks can be entered for any term of the year: pick the term first,
+    // then the class and subject taught in that term.
+    final current = _assignment();
+    final terms = <String>{
+      for (final a in data.assignments) a.periodLabel,
+    }.toList()..sort();
+    final term = current?.periodLabel;
+    final inTerm = [
+      for (final a in data.assignments)
+        if (term == null || a.periodLabel == term) a,
+    ];
     return UiCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -795,6 +806,30 @@ class _AssessmentsPageState extends ConsumerState<AssessmentsPage> {
             phoneColumns: 1,
             children: [
               UiField(
+                label: 'Term',
+                child: DropdownButtonFormField<String>(
+                  key: ValueKey('term-$term'),
+                  initialValue: term,
+                  isExpanded: true,
+                  decoration: const InputDecoration(isDense: true),
+                  items: [
+                    for (final t in terms)
+                      DropdownMenuItem(value: t, child: Text(t)),
+                  ],
+                  onChanged: (v) {
+                    if (v == null || v == term) return;
+                    final options = data.assignments
+                        .where((a) => a.periodLabel == v)
+                        .toList();
+                    final same = options.where(
+                      (a) => a.label == current?.label,
+                    );
+                    final next = same.isNotEmpty ? same.first : options.first;
+                    _selectAssignment(next.classSubjectId);
+                  },
+                ),
+              ),
+              UiField(
                 label: 'Class and subject',
                 child: DropdownButtonFormField<String>(
                   key: ValueKey('cs-$_csId'),
@@ -802,13 +837,10 @@ class _AssessmentsPageState extends ConsumerState<AssessmentsPage> {
                   isExpanded: true,
                   decoration: const InputDecoration(isDense: true),
                   items: [
-                    for (final a in data.assignments)
+                    for (final a in inTerm)
                       DropdownMenuItem(
                         value: a.classSubjectId,
-                        child: Text(
-                          '${a.label} (${a.periodLabel})',
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                        child: Text(a.label, overflow: TextOverflow.ellipsis),
                       ),
                   ],
                   onChanged: (v) {

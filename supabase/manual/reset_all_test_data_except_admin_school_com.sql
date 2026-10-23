@@ -48,13 +48,25 @@ ALTER TABLE public.payment
 DELETE FROM public.payment;
 ALTER TABLE public.payment
   ENABLE TRIGGER prevent_posted_payment_mutation_trigger;
+ALTER TABLE public.payment_arrangement_history
+  DISABLE TRIGGER arrangement_history_immutable;
 DELETE FROM public.payment_arrangement_history;
+ALTER TABLE public.payment_arrangement_history
+  ENABLE TRIGGER arrangement_history_immutable;
 DELETE FROM public.payment_arrangement_installments;
 DELETE FROM public.payment_arrangements;
 DELETE FROM public.financialadjustment;
+ALTER TABLE public.assessment_returns
+  DISABLE TRIGGER assessment_returns_immutable;
 DELETE FROM public.assessment_returns;
+ALTER TABLE public.assessment_returns
+  ENABLE TRIGGER assessment_returns_immutable;
 DELETE FROM public.result_correction_requests;
+ALTER TABLE public.grade
+  DISABLE TRIGGER prevent_published_grade_mutation_trigger;
 DELETE FROM public.grade;
+ALTER TABLE public.grade
+  ENABLE TRIGGER prevent_published_grade_mutation_trigger;
 DELETE FROM public.assessment;
 DELETE FROM public.studentsubject;
 DELETE FROM public.student_subject_enrollments;

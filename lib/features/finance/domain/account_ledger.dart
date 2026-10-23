@@ -148,7 +148,12 @@ class FeeStanding {
   const FeeStanding(this.fee, this.paid);
 
   /// Still owed on this fee alone (never below zero).
-  double get remaining => roundMoney((fee.amount - paid).clamp(0, double.infinity));
+  double get remaining =>
+      roundMoney((fee.amount - paid).clamp(0, double.infinity));
+
+  /// What was paid above this fee, kept as credit on the account.
+  double get credit =>
+      roundMoney((paid - fee.amount).clamp(0, double.infinity));
 }
 
 /// Per-fee paid/remaining using only non-reversed payments of that fee.
@@ -187,7 +192,8 @@ class PaymentPreview {
   });
 
   /// Amount that would exceed what is still owed on the chosen fee.
-  double get overFee => roundMoney((amount - feeRemainingBefore).clamp(0, double.infinity));
+  double get overFee =>
+      roundMoney((amount - feeRemainingBefore).clamp(0, double.infinity));
 
   /// True when the payment would take the whole account into credit.
   bool get createsCredit => newBalance < 0;
@@ -204,7 +210,9 @@ PaymentPreview previewPayment({
     amount: roundMoney(amt),
     newBalance: roundMoney(balance - amt),
     feeRemainingBefore: roundMoney(feeRemaining),
-    feeRemainingAfter: roundMoney((feeRemaining - amt).clamp(0, double.infinity)),
+    feeRemainingAfter: roundMoney(
+      (feeRemaining - amt).clamp(0, double.infinity),
+    ),
   );
 }
 
@@ -303,7 +311,11 @@ List<StudentBalanceRow> buildBalanceRows({
         feesDue: due,
         paid: paid,
         adjustments: adj,
-        balance: balanceFromTotals(feesDue: due, paidNet: paid, adjustments: adj),
+        balance: balanceFromTotals(
+          feesDue: due,
+          paidNet: paid,
+          adjustments: adj,
+        ),
         lastPaymentDate: last,
         dueDate: dueDateFor?.call(s.studentId, applicable),
       ),

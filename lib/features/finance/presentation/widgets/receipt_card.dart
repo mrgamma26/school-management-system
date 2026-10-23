@@ -42,9 +42,9 @@ class _ReceiptCardState extends ConsumerState<ReceiptCard> {
       await action();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$failure ${friendlyError(e)}')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('$failure ${friendlyError(e)}')));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -128,7 +128,9 @@ class _ReceiptCardState extends ConsumerState<ReceiptCard> {
           button: UiButton.secondary(
             'Email receipt',
             icon: Icons.mail_outline,
-            onPressed: _busy ? null : () => _emailReceipt(schoolName, guardians),
+            onPressed: _busy
+                ? null
+                : () => _emailReceipt(schoolName, guardians),
           ),
           note: null,
         );
@@ -259,7 +261,11 @@ class _ReceiptCardState extends ConsumerState<ReceiptCard> {
           const Divider(height: 18),
           line('Amount received', formatMwk(r.amount), strong: true),
           line('Previous balance', formatMwk(r.previousBalance)),
-          line('Remaining balance', formatMwk(r.remainingBalance), strong: true),
+          line(
+            'Remaining balance',
+            formatMwk(r.remainingBalance),
+            strong: true,
+          ),
           const SizedBox(height: 14),
           Wrap(
             spacing: 8,

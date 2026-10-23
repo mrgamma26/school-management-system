@@ -90,11 +90,13 @@ class FinanceRepository {
     }
     final path =
         '${user.id}/${DateTime.now().microsecondsSinceEpoch}_$safeName';
-    await supabase.storage.from('deposit-slips').uploadBinary(
-      path,
-      bytes,
-      fileOptions: FileOptions(contentType: mimeType),
-    );
+    await supabase.storage
+        .from('deposit-slips')
+        .uploadBinary(
+          path,
+          bytes,
+          fileOptions: FileOptions(contentType: mimeType),
+        );
     try {
       await supabase.from('deposit_slips').insert({
         'student_id': studentId,

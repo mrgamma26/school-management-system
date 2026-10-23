@@ -82,7 +82,8 @@ class EmailDeliveryLogPage extends ConsumerWidget {
           onRetry: () => ref.invalidate(_emailLogProvider),
           loadingMessage: 'Loading email log…',
           searchHint: 'Search recipient, subject or type',
-          searchText: (r) => '${r.recipientAddress} ${r.subject} ${r.messageType}',
+          searchText: (r) =>
+              '${r.recipientAddress} ${r.subject} ${r.messageType}',
           filters: const ['All', 'Queued', 'Sent', 'Failed'],
           matchesFilter: (r, f) => _labelFor(r.status) == f,
           emptyIcon: Icons.mark_email_unread_outlined,

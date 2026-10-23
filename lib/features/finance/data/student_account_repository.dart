@@ -93,7 +93,9 @@ class StudentAccountRepository {
 
     final placementRows = await supabase
         .from('studentclasshistory')
-        .select('classid, academicyearid, enddate, enrollmentdate, class(classroomname, form)')
+        .select(
+          'classid, academicyearid, enddate, enrollmentdate, class(classroomname, form)',
+        )
         .eq('studentid', studentId)
         .order('enrollmentdate');
 
@@ -121,7 +123,9 @@ class StudentAccountRepository {
 
     final adjustmentRows = await supabase
         .from('financialadjustment')
-        .select('adjustmentid, amount, reason, createdat, staff!approvedby(firstname, lastname)')
+        .select(
+          'adjustmentid, amount, reason, createdat, staff!approvedby(firstname, lastname)',
+        )
         .eq('studentid', studentId)
         .order('createdat', ascending: false);
 
@@ -178,7 +182,9 @@ class StudentAccountRepository {
     final reversal = r['payment_reversals'];
     final reversalMap = reversal is Map
         ? reversal
-        : (reversal is List && reversal.isNotEmpty ? reversal.first as Map : null);
+        : (reversal is List && reversal.isNotEmpty
+              ? reversal.first as Map
+              : null);
     return LedgerPayment(
       paymentId: r['paymentid'] as String,
       feeStructureId: r['feestructureid'] as String,
@@ -202,7 +208,9 @@ class StudentAccountRepository {
     final studentRows = await _fetchAll(
       (from, to) => supabase
           .from('student')
-          .select('studentid, firstname, middlename, lastname, enrollmentstatus')
+          .select(
+            'studentid, firstname, middlename, lastname, enrollmentstatus',
+          )
           .order('lastname')
           .order('studentid')
           .range(from, to),
@@ -210,7 +218,9 @@ class StudentAccountRepository {
     final placementRows = await _fetchAll(
       (from, to) => supabase
           .from('studentclasshistory')
-          .select('studentid, classid, academicyearid, enddate, class(classroomname, form)')
+          .select(
+            'studentid, classid, academicyearid, enddate, class(classroomname, form)',
+          )
           .order('historyid')
           .range(from, to),
     );
@@ -242,15 +252,17 @@ class StudentAccountRepository {
     final reversed = {for (final r in reversedRows) r['payment_id'] as String};
     final placements = <String, List<LedgerPlacement>>{};
     for (final r in placementRows) {
-      placements.putIfAbsent(r['studentid'] as String, () => []).add(
-        LedgerPlacement(
-          classId: r['classid'] as String,
-          academicYearId: r['academicyearid'] as String,
-          className: (r['class'] as Map?)?['classroomname'] as String?,
-          form: (r['class'] as Map?)?['form']?.toString(),
-          endDate: _date(r['enddate']),
-        ),
-      );
+      placements
+          .putIfAbsent(r['studentid'] as String, () => [])
+          .add(
+            LedgerPlacement(
+              classId: r['classid'] as String,
+              academicYearId: r['academicyearid'] as String,
+              className: (r['class'] as Map?)?['classroomname'] as String?,
+              form: (r['class'] as Map?)?['form']?.toString(),
+              endDate: _date(r['enddate']),
+            ),
+          );
     }
     final payments =
         <String, List<({double amount, DateTime? date, bool reversed})>>{};
@@ -264,7 +276,10 @@ class StudentAccountRepository {
         reversed: isReversed,
       ));
       if (!isReversed) {
-        final perFee = paidByFee.putIfAbsent(r['studentid'] as String, () => {});
+        final perFee = paidByFee.putIfAbsent(
+          r['studentid'] as String,
+          () => {},
+        );
         final feeId = r['feestructureid'] as String;
         perFee[feeId] = (perFee[feeId] ?? 0) + amount;
       }
@@ -289,7 +304,8 @@ class StudentAccountRepository {
     final adjustments = <String, double>{};
     for (final r in adjustmentRows) {
       final id = r['studentid'] as String;
-      adjustments[id] = (adjustments[id] ?? 0) + (r['amount'] as num).toDouble();
+      adjustments[id] =
+          (adjustments[id] ?? 0) + (r['amount'] as num).toDouble();
     }
 
     return buildBalanceRows(

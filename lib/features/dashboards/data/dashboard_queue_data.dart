@@ -143,8 +143,7 @@ Future<List<DashboardQueueEntry>> _headTeacherCorrections() async {
         DashboardQueueEntry(
           icon: Icons.edit_note_outlined,
           title: '${r.studentName} · ${r.assessmentName}',
-          subtitle:
-              '${r.subjectName}, ${r.className}: ${_clip(r.reason, 70)}',
+          subtitle: '${r.subjectName}, ${r.className}: ${_clip(r.reason, 70)}',
           pill: 'Correction pending',
           tone: StatusTone.warning,
           route: '/results/corrections',
@@ -344,7 +343,10 @@ Future<List<DashboardQueueEntry>> _emailAttention() async {
     return result.count;
   }
 
-  final counts = await Future.wait([countStatus('FAILED'), countStatus('QUEUED')]);
+  final counts = await Future.wait([
+    countStatus('FAILED'),
+    countStatus('QUEUED'),
+  ]);
   final failed = counts[0], queued = counts[1];
   return [
     if (failed > 0)
@@ -501,15 +503,18 @@ final dashboardQueueProvider = FutureProvider.autoDispose
           [3, 2],
         ),
         'TEACHER' => _teacherMissingMarks(userId),
-        'ACCOUNTANT' => _merge([_pendingDepositSlips, _largestBalances], [3, 2]),
+        'ACCOUNTANT' => _merge(
+          [_pendingDepositSlips, _largestBalances],
+          [3, 2],
+        ),
         'ADMINISTRATOR' => _administratorGaps().then(
           (gaps) => _mergeLists([gaps.noGuardian, gaps.noClass], [3, 2]),
         ),
         'SUPER_USER' => _merge([_emailAttention, _recentAudit], [2, 3]),
-        'GUARDIAN' => _merge([
-          () => _guardianChildren(userId),
-          _unreadNotices,
-        ], [3, 2]),
+        'GUARDIAN' => _merge(
+          [() => _guardianChildren(userId), _unreadNotices],
+          [3, 2],
+        ),
         _ => Future.error(ArgumentError.value(role, 'role')),
       };
     }, retry: (retryCount, error) => null);

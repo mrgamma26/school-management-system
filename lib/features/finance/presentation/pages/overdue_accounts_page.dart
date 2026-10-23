@@ -73,7 +73,9 @@ class _OverdueAccountsPageState extends ConsumerState<OverdueAccountsPage> {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not create the list: ${friendlyError(e)}')),
+          SnackBar(
+            content: Text('Could not create the list: ${friendlyError(e)}'),
+          ),
         );
       }
     }
@@ -89,10 +91,14 @@ class _OverdueAccountsPageState extends ConsumerState<OverdueAccountsPage> {
     final all = ref.watch(balanceOverviewProvider);
     final today = DateTime.now();
     final owing = all.whenData(
-      (rows) => sortOverdueRows([
-        for (final r in rows)
-          if (r.owes) r,
-      ], _sort, today),
+      (rows) => sortOverdueRows(
+        [
+          for (final r in rows)
+            if (r.owes) r,
+        ],
+        _sort,
+        today,
+      ),
     );
     final loaded = owing.value;
     final forms = <String>{
@@ -203,13 +209,16 @@ class _OverdueAccountsPageState extends ConsumerState<OverdueAccountsPage> {
               child: UiCellText(daysOverdueLabel(s, today)),
             ),
             UiCellText(
-              s.lastPaymentDate == null ? 'No payment yet' : formatUiDate(s.lastPaymentDate),
+              s.lastPaymentDate == null
+                  ? 'No payment yet'
+                  : formatUiDate(s.lastPaymentDate),
             ),
             Align(
               alignment: Alignment.centerRight,
               child: UiButton.secondary(
                 'Open account',
-                onPressed: () => openStudentAccount(context, s.studentId, s.name),
+                onPressed: () =>
+                    openStudentAccount(context, s.studentId, s.name),
               ),
             ),
           ], onTap: () => openStudentAccount(context, s.studentId, s.name)),

@@ -25,6 +25,7 @@ import '../../academics/domain/models/academic_year.dart';
 import '../../academics/domain/models/class_model.dart';
 import '../../../theme/app_tokens.dart';
 import 'admission_widgets.dart';
+import 'guardian_relationships.dart';
 import '../../../core/navigation/close_form.dart';
 
 final registrationAcademicRepositoryProvider = Provider<AcademicRepository>(
@@ -98,7 +99,7 @@ class _GuardianEntry {
   final TextEditingController phoneCtrl = TextEditingController();
   final TextEditingController addressCtrl = TextEditingController();
   String gender = 'FEMALE';
-  String relationship = 'PARENT';
+  String relationship = defaultGuardianRelationship;
   String? createdUserId;
   String? generatedPassword;
   bool linked = false;
@@ -121,7 +122,7 @@ class _ExistingGuardianSelection {
 
   _ExistingGuardianSelection({
     required this.guardian,
-    this.relationship = 'PARENT',
+    this.relationship = defaultGuardianRelationship,
   });
 }
 
@@ -430,7 +431,9 @@ class _StudentFormPageState extends ConsumerState<StudentFormPage> {
             _existingGuardians.add(
               _ExistingGuardianSelection(
                 guardian: guardian,
-                relationship: saved['relationship'] as String? ?? 'PARENT',
+                relationship:
+                    saved['relationship'] as String? ??
+                    defaultGuardianRelationship,
               ),
             );
           } catch (_) {
@@ -1663,26 +1666,7 @@ class _ExistingGuardianCard extends StatelessWidget {
                     decoration: const InputDecoration(
                       labelText: 'Relationship',
                     ),
-                    items: const [
-                      DropdownMenuItem(value: 'PARENT', child: Text('Parent')),
-                      DropdownMenuItem(
-                        value: 'GUARDIAN',
-                        child: Text('Guardian'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'SIBLING',
-                        child: Text('Sibling'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'GRANDPARENT',
-                        child: Text('Grandparent'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'UNCLE/AUNT',
-                        child: Text('Uncle/Aunt'),
-                      ),
-                      DropdownMenuItem(value: 'OTHER', child: Text('Other')),
-                    ],
+                    items: relationshipMenuItems(selection.relationship),
                     onChanged: onRelationshipChanged == null
                         ? null
                         : (value) {
@@ -1912,26 +1896,7 @@ class _GuardianCardState extends State<_GuardianCard> {
                     decoration: const InputDecoration(
                       labelText: 'Relationship',
                     ),
-                    items: const [
-                      DropdownMenuItem(value: 'PARENT', child: Text('Parent')),
-                      DropdownMenuItem(
-                        value: 'GUARDIAN',
-                        child: Text('Guardian'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'SIBLING',
-                        child: Text('Sibling'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'GRANDPARENT',
-                        child: Text('Grandparent'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'UNCLE/AUNT',
-                        child: Text('Uncle/Aunt'),
-                      ),
-                      DropdownMenuItem(value: 'OTHER', child: Text('Other')),
-                    ],
+                    items: relationshipMenuItems(widget.entry.relationship),
                     onChanged: (v) =>
                         setState(() => widget.entry.relationship = v!),
                   ),

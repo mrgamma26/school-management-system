@@ -51,7 +51,8 @@ class StudentAccountsPage extends ConsumerWidget {
           searchHint: 'Search by student name or class',
           searchText: (s) => '${s.name} ${s.className ?? ''}',
           filters: const ['All', 'Owing', 'Paid up'],
-          matchesFilter: (s, f) => f == 'Owing' ? s.balance > 0 : s.balance <= 0,
+          matchesFilter: (s, f) =>
+              f == 'Owing' ? s.balance > 0 : s.balance <= 0,
           emptyIcon: Icons.account_box_outlined,
           emptyTitle: 'No students yet',
           emptyMessage: 'Students appear here once they are registered.',
@@ -92,7 +93,10 @@ class StudentAccountsPage extends ConsumerWidget {
             UiColumn('Status', width: 112),
           ],
           rowOf: (s) => UiTableRow([
-            PersonCell(s.name, subtitle: s.enrollmentStatus.replaceAll('_', ' ')),
+            PersonCell(
+              s.name,
+              subtitle: s.enrollmentStatus.replaceAll('_', ' '),
+            ),
             UiCellText(s.className ?? '—'),
             UiCellText(formatMwk(s.feesDue)),
             UiCellText(formatMwk(s.paid)),

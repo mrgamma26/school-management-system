@@ -69,7 +69,8 @@ class _AllPaymentsPageState extends ConsumerState<AllPaymentsPage> {
         PageHead(
           kicker: 'Finance',
           title: 'Payments',
-          subtitle: 'Posted payments, receipts and references for a school year.',
+          subtitle:
+              'Posted payments, receipts and references for a school year.',
           actions: [
             if (_selectedYear != null)
               UiButton.secondary(
@@ -110,8 +111,10 @@ class _AllPaymentsPageState extends ConsumerState<AllPaymentsPage> {
                       initialValue: _selectedYear,
                       items: years
                           .map(
-                            (y) =>
-                                DropdownMenuItem(value: y, child: Text(y.label)),
+                            (y) => DropdownMenuItem(
+                              value: y,
+                              child: Text(y.label),
+                            ),
                           )
                           .toList(),
                       onChanged: (y) => setState(() {

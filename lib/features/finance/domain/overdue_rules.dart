@@ -19,7 +19,9 @@ DateTime? earliestOutstandingDueDate({
 }) {
   DateTime? earliest;
   for (final fee in applicable) {
-    final remaining = roundMoney(fee.amount - (paidByFee[fee.feeStructureId] ?? 0));
+    final remaining = roundMoney(
+      fee.amount - (paidByFee[fee.feeStructureId] ?? 0),
+    );
     if (remaining <= 0) continue;
     final start = periodStarts[fee.academicYearId];
     if (start == null) continue;

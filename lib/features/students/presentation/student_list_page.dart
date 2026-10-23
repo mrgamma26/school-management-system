@@ -5,14 +5,14 @@ import 'package:school_management_app/features/academics/domain/models/academic_
 
 import '../../../core/auth/permission_helper.dart';
 import '../../../core/services/export_service.dart';
-import '../../../core/widgets/app_widgets.dart'
-    show ErrorState, LoadingState;
+import '../../../core/widgets/app_widgets.dart' show ErrorState, LoadingState;
 import '../../../widgets/can.dart';
 import '../../../widgets/ui_kit.dart';
 import '../../academics/data/academic_repository.dart';
 import '../../authentication/presentation/providers/auth_provider.dart';
 import '../data/student_repository.dart';
 import '../domain/student.dart';
+import 'continue_term_dialog.dart';
 
 final _studentListProvider = FutureProvider<List<Student>>((ref) {
   return StudentRepository().listStudents();
@@ -205,6 +205,15 @@ class _StudentListPageState extends ConsumerState<StudentListPage> {
     if (mounted) _refreshStudents();
   }
 
+  Future<void> _continueToNextTerm() async {
+    final summary = await showContinueToNextTermDialog(context);
+    if (summary == null || !mounted) return;
+    _refreshStudents();
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(summary)));
+  }
+
   Future<void> _export(AsyncValue<List<Student>> async) async {
     final students = async.value;
     final messenger = ScaffoldMessenger.of(context);
@@ -297,6 +306,14 @@ class _StudentListPageState extends ConsumerState<StudentListPage> {
               'Refresh',
               icon: Icons.refresh_rounded,
               onPressed: _refreshStudents,
+            ),
+            Can(
+              permission: 'students:enrol',
+              child: UiButton.secondary(
+                'Continue to next term',
+                icon: Icons.east_rounded,
+                onPressed: _continueToNextTerm,
+              ),
             ),
             Can(
               permission: 'students:enrol',

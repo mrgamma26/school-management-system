@@ -22,7 +22,9 @@ bool canSendNotifications(String role) => const {
 /// database accepts:
 ///  * `staff`, `guardian` and `subject` tables: Super User + Administrator manage;
 ///  * `feestructure`: Super User, Administrator and Accountant manage;
-///  * `systemuser` and `auditlog` are read by the Super User.
+///  * `systemuser` and `auditlog` are read by the Super User;
+///  * students are registered and moved between terms by Super User and
+///    Administrator (`students:enrol`).
 Set<String> impliedPermissionsFor(String role) {
   switch (schoolRole(role)) {
     case 'SUPER_USER':
@@ -33,6 +35,7 @@ Set<String> impliedPermissionsFor(String role) {
         'guardians:write',
         'academics:write',
         'finance:manage_structures',
+        'students:enrol',
       };
     case 'ADMINISTRATOR':
       return const {
@@ -40,6 +43,7 @@ Set<String> impliedPermissionsFor(String role) {
         'guardians:write',
         'academics:write',
         'finance:manage_structures',
+        'students:enrol',
       };
     default:
       return const {};

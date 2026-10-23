@@ -267,7 +267,9 @@ class RoleDashboard extends ConsumerWidget {
         loading: () => null,
         error: (_, _) => '—',
       ),
-      note: count.hasError ? 'Unavailable. Reopen the dashboard to retry.' : metric.note,
+      note: count.hasError
+          ? 'Unavailable. Reopen the dashboard to retry.'
+          : metric.note,
       noteTone: count.hasError ? StatusTone.warning : StatusTone.neutral,
       onTap: metric.route == null ? null : () => _open(context, metric.route!),
     );

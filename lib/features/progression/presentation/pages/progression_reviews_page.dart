@@ -341,12 +341,27 @@ class _ProgressionReviewsPageState
                   contentPadding: EdgeInsets.zero,
                   title: Text(term['term'].toString().replaceAll('_', ' ')),
                   trailing: Text(
-                    enrolled ? '${average ?? '—'}' : '— / Not enrolled',
+                    average != null
+                        ? '$average'
+                        : enrolled
+                        ? 'Absent (no results)'
+                        : 'Absent (not enrolled)',
                   ),
                 );
               }),
               const Divider(),
               Text('Annual average: ${result['annualAverage'] ?? '—'}'),
+              if (result['annualAverage'] == null &&
+                  result['averageSoFar'] != null)
+                Text(
+                  'Average so far (${result['termsWithResults']} of 3 terms): '
+                  '${result['averageSoFar']}',
+                ),
+              Text(
+                result['decidable'] == true
+                    ? 'Term 3 results are posted: the Head Teacher can decide.'
+                    : 'Waiting for Term 3 results before progression.',
+              ),
               Text('Recommendation: ${result['recommendation']}'),
               Text('Pass threshold: ${result['passThreshold']}%'),
               if (missing.isNotEmpty) ...[
@@ -486,15 +501,41 @@ class _ReviewList extends ConsumerWidget {
                 final name = '${student['firstname']} ${student['lastname']}';
                 final decision = r['decision'] as String;
                 final approver = r['staff'] as Map<String, dynamic>?;
+                final snapshot = r['calculationsnapshot'];
+                final complete =
+                    snapshot is! Map || snapshot['complete'] != false;
+                // Decisions open once Term 3 results are posted; missing
+                // earlier terms count as absent.
+                final decidable =
+                    snapshot is! Map ||
+                    snapshot['decidable'] == true ||
+                    snapshot['complete'] == true;
+                final termsWithResults = snapshot is Map
+                    ? snapshot['termsWithResults']
+                    : null;
                 return UiTableRow([
                   PersonCell(name),
-                  UiCellText('${r['averagescore'] ?? '—'}', bold: true),
+                  UiCellText(
+                    complete
+                        ? '${r['averagescore'] ?? '—'}'
+                        : '${r['averagescore'] ?? '—'} '
+                              '($termsWithResults of 3 terms, others absent)',
+                    bold: true,
+                  ),
                   UiCellText(
                     approver == null
                         ? '—'
                         : '${approver['firstname']} ${approver['lastname']}',
                   ),
-                  decision == 'PENDING' && canDecide
+                  decision == 'PENDING' && !decidable
+                      ? const Align(
+                          alignment: Alignment.centerLeft,
+                          child: StatusPill(
+                            'AWAITING TERM 3',
+                            tone: StatusTone.warning,
+                          ),
+                        )
+                      : decision == 'PENDING' && canDecide
                       ? _DecisionButtons(
                           reviewId: r['reviewid'] as String,
                           yearId: yearId,

@@ -1,0 +1,246 @@
+SCHOOL MANAGEMENT SYSTEM - PRESENTATION SCRIPT WITH TEST DATA
+Edition: 23 October 2026
+Start from a clean database (only admin@school.com exists). Copy each value exactly.
+
+IMPORTANT DATE CHOICE
+The demo year is 2025/2026, which is fully in the past, so marks and dates for Term 1, Term 2 and Term 3 are all accepted. The year 2026/2027 is created only so promoted students have a Form 2 place to move to.
+
+
+========================================================================
+PART A - TEST DATA (copy and paste)
+========================================================================
+
+A1. SCHOOL YEARS AND TERMS
+Year 1: 2025/2026 (make this one current)
+  Year start: 2025-09-08     Year end: 2026-07-17
+  Term 1: 2025-09-08 to 2025-12-12
+  Term 2: 2026-01-05 to 2026-04-03
+  Term 3: 2026-04-20 to 2026-07-17
+Year 2: 2026/2027 (do not make current)
+  Year start: 2026-09-07     Year end: 2027-07-16
+  Term 1: 2026-09-07 to 2026-12-11
+  Term 2: 2027-01-04 to 2027-04-02
+  Term 3: 2027-04-19 to 2027-07-16
+
+A2. SUBJECTS (3)
+Mathematics
+English
+Biology
+
+A3. CLASSES
+Form 1A    (the demo class)
+Form 2A    (needed so promoted students have a place)
+
+A4. STAFF ACCOUNTS
+Every staff member uses these shared values unless shown otherwise:
+  Physical address: Area 47, Lilongwe
+  Employment start date: 2024-01-08
+  Emergency contact relationship: Spouse
+
+1. Administrator (created by the Super User admin@school.com)
+  First name: Esther        Last name: Gondwe        Gender: Female
+  Date of birth: 1986-05-14  Phone: +265 991 100 001
+  Email: esther.gondwe@demoschool.example.com
+  Role: Administrator   Employee number: DSS-ADM-001   Job title: School Administrator
+  Emergency contact: Daniel Gondwe, +265 991 100 101
+
+2. Head Teacher (created by the Super User)
+  First name: Ruth          Last name: Kamanga       Gender: Female
+  Date of birth: 1979-02-02  Phone: +265 991 100 002
+  Email: ruth.kamanga@demoschool.example.com
+  Role: Head Teacher   Employee number: DSS-HDT-001   Job title: Head Teacher
+  Emergency contact: Joseph Kamanga, +265 991 100 102
+
+3. Accountant (created by the Administrator)
+  First name: James         Last name: Tembo         Gender: Male
+  Date of birth: 1988-11-20  Phone: +265 991 100 003
+  Email: james.tembo@demoschool.example.com
+  Role: Accountant   Employee number: DSS-ACC-001   Job title: School Accountant
+  Emergency contact: Alice Tembo, +265 991 100 103
+
+4. Mathematics teacher (created by the Administrator)
+  First name: Chikondi      Last name: Banda         Gender: Male
+  Date of birth: 1990-07-09  Phone: +265 991 100 004
+  Email: chikondi.banda@demoschool.example.com
+  Role: Teacher   Employee number: DSS-TCH-001   Job title: Mathematics Teacher
+  Subjects they teach: Mathematics
+  Emergency contact: Lucy Banda, +265 991 100 104
+
+5. English teacher (created by the Administrator)
+  First name: Grace         Last name: Mwale         Gender: Female
+  Date of birth: 1992-03-25  Phone: +265 991 100 005
+  Email: grace.mwale@demoschool.example.com
+  Role: Teacher   Employee number: DSS-TCH-002   Job title: English Teacher
+  Subjects they teach: English
+  Emergency contact: Henry Mwale, +265 991 100 105
+
+6. Biology teacher (created by the Administrator)
+  First name: Peter         Last name: Nkhoma        Gender: Male
+  Date of birth: 1987-12-01  Phone: +265 991 100 006
+  Email: peter.nkhoma@demoschool.example.com
+  Role: Teacher   Employee number: DSS-TCH-003   Job title: Biology Teacher
+  Subjects they teach: Biology
+  Emergency contact: Ruth Nkhoma, +265 991 100 106
+
+Passwords: each account shows a temporary password once when it is created. Write it down. At first sign-in the person must choose a new password. For the demo you can use: Demo!School2026
+
+A5. STUDENT AND GUARDIAN
+Student
+  First name: Thoko         Last name: Chirwa        Gender: Female
+  Date of birth: 2012-03-15
+  Class: Form 1A, 2025/2026 Term 1
+Guardian (new guardian, created on the student form)
+  First name: Mercy         Last name: Chirwa        Gender: Female
+  Phone: +265 991 200 001
+  Email: mercy.chirwa@demoschool.example.com
+  Address: Area 25, Lilongwe
+  Relationship: Mother
+
+Optional second student (shows the late-joiner rule)
+  First name: Kondwani      Last name: Phiri         Gender: Male
+  Date of birth: 2012-08-30
+  Class: Form 1A, 2025/2026 Term 2 (joins in Term 2, so Term 1 shows Absent)
+  Guardian (new):
+    First name: Yohane  Last name: Phiri  Gender: Male  Phone: +265 991 200 002
+    Email: yohane.phiri@demoschool.example.com  Address: Area 18, Lilongwe
+    Relationship: Father
+
+A6. PAYMENT CHANNELS (Payment Configuration)
+Bank account: Bank name: National Bank of Malawi   Account name: Demo Secondary School   Account number: 1001234567
+Mobile money: Provider: Airtel Money   Number: 0991234567   Account name: Demo Secondary School
+
+A7. FEES (Fee Structure, 2025/2026 Term 1, Form 1)
+Fee type: Tuition      Amount: 150000
+Fee type: Exam Fee     Amount: 20000
+
+A8. PAYMENTS FOR THOKO (Student Accounts > Thoko Chirwa > Record payment)
+Payment 1: Fee Tuition   Amount 100000   Method Cash                                  Date: today
+Payment 2: Fee Tuition   Amount 50000    Method Mobile money  Channel: Airtel Money  Reference: AM2610230001
+Payment 3: Fee Exam Fee  Amount 30000    Method Cash   (10000 more than owed: kept as credit)
+Result: the account shows In credit MWK 10,000.00
+
+Optional arrangement (Payment Arrangements > New arrangement), for Kondwani after his fees are set:
+  Instalment 1: due 2026-11-30, amount 85000
+  Instalment 2: due 2026-12-15, amount 85000
+
+A9. ASSESSMENTS AND MARKS (each teacher, for each term)
+Create one assessment per subject per term:
+  Name: Term 1 Exam / Term 2 Exam / Term 3 Exam
+  Type: Exam      Maximum score: 100
+Marks for Thoko Chirwa:
+  Subject        Term 1   Term 2   Term 3
+  Mathematics      72       78       81
+  English          65       70       74
+  Biology          58       61       66
+  Term average    65.00    69.67    73.67
+Expected annual average: 69.44 (pass mark 50) -> recommendation PROMOTE
+
+Marks for Kondwani Phiri (optional, joined in Term 2):
+  Subject        Term 1   Term 2   Term 3
+  Mathematics    Absent     55       60
+  English        Absent     52       58
+  Biology        Absent     49       57
+Expected: average over 2 of 3 terms = 55.17 -> PROMOTE, Term 1 shown as Absent
+
+A10. TEACHER COMMENTS (Teacher Comments page, each teacher about Thoko)
+Mathematics (Chikondi Banda): Thoko works hard in Mathematics and explains her working clearly. Keep practising algebra and word problems.
+English (Grace Mwale): Thoko writes well-organised essays and reads widely. She should speak up more during class discussions.
+Biology (Peter Nkhoma): Thoko shows strong interest in practical work. Revise the human body systems before the next exam.
+
+A11. NOTIFICATION (Head Teacher > Notifications > Send Notification to Mercy Chirwa)
+Subject: Term 1 results published
+Message: Dear Mrs Chirwa, Thoko's Term 1 results are now available in the parent portal. Thank you for keeping her fees up to date.
+
+A12. RETURN REASON (Head Teacher, if you demonstrate Return with reason)
+Please check the Biology mark for Thoko; it does not match the exam script.
+
+A13. PROMOTION REASON (Head Teacher)
+Annual average 69.44 is above the pass mark of 50. Promoted to Form 2.
+
+
+========================================================================
+PART B - STEP BY STEP DEMONSTRATION
+========================================================================
+
+WORKFLOW 1 - SUPER USER: FIRST ACCOUNTS
+Step 1. Sign in as admin@school.com.
+Step 2. Open Staff, press Add Staff and create the Administrator (A4.1). Write down the temporary password.
+Step 3. Press Add Staff again and create the Head Teacher (A4.2). Write down the temporary password.
+Step 4. Sign out.
+
+WORKFLOW 2 - ADMINISTRATOR: SET UP THE SCHOOL
+Step 1. Sign in as esther.gondwe@demoschool.example.com with the temporary password and set a new password.
+Step 2. Academics > Academic Years > Add Academic Year. Enter 2025/2026 with the dates in A1. Save. Press Make current, then Set as current on Term 1.
+Step 3. Add Academic Year again for 2026/2027 (A1). Save. Do not make it current.
+Step 4. Academics > Subjects > Add subject: Mathematics. Repeat for English and Biology.
+Step 5. Staff > Add Staff: create the Accountant and the three teachers (A4.3 to A4.6). For each teacher tick the subject under Subjects they teach. Write down every temporary password.
+Step 6. Academics > Class Setup > New class: Form 1A. Then New class: Form 2A.
+Step 7. Choose Form 1A, press Add subjects, tick Mathematics, English and Biology, Save.
+Step 8. In each subject row choose the teacher: Mathematics - Chikondi Banda, English - Grace Mwale, Biology - Peter Nkhoma.
+Step 9. Choose Form 2A, add the same three subjects and teachers (so promotion has a place).
+Step 10. Students > Register Student: enter Thoko Chirwa (A5). Under Current class choose 2025/2026 Term 1 and Form 1A. Under Or create a new guardian enter Mercy Chirwa, Relationship Mother. Save. Write down Mercy's temporary password.
+
+WORKFLOW 3 - ACCOUNTANT: FEES, PAYMENTS AND CREDIT
+Step 1. Sign in as james.tembo@demoschool.example.com and set a new password.
+Step 2. Payment Configuration: add the bank account and the Airtel Money channel (A6).
+Step 3. Fee Structure > Add Fee: Tuition 150000 and Exam Fee 20000 for 2025/2026 Term 1, Form 1 (A7).
+Step 4. Student Accounts > press Thoko Chirwa > Record payment. Enter Payment 1 (A8). Press Post payment. Show the receipt.
+Step 5. Record Payment 2 (mobile money) and Payment 3 (Exam Fee 30000). On Payment 3 the screen says the extra 10000 will be kept as credit. Post it.
+Step 6. Show the account: In credit MWK 10,000.00, and the Exam Fee row shows Credit MWK 10,000.00.
+
+WORKFLOW 4 - TEACHERS: TERM 1 MARKS AND COMMENTS
+Step 1. Sign in as chikondi.banda@demoschool.example.com and set a new password.
+Step 2. Open Assessments. Term: 2025/2026 TERM 1. Class and subject: Mathematics - Form 1A.
+Step 3. Press New assessment: Term 1 Exam, type Exam, maximum 100. Save.
+Step 4. Type Thoko's mark 72 (A9). It saves as a draft. Press Preview result sheet, then Submit to Head Teacher.
+Step 5. Open Teacher Comments, choose Thoko Chirwa and paste the Mathematics comment (A10). Save.
+Step 6. Repeat Steps 1 to 5 as Grace Mwale (English, 65) and Peter Nkhoma (Biology, 58).
+
+WORKFLOW 5 - HEAD TEACHER: REVIEW AND PUBLISH
+Step 1. Sign in as ruth.kamanga@demoschool.example.com and set a new password.
+Step 2. Results > Review Workspace. Open the Biology sheet. (Optional) press Return with reason, paste A12, press Return sheet; Peter Nkhoma corrects and resubmits.
+Step 3. Open each sheet and press Approve and publish.
+Step 4. Notifications > Send Notification to Mercy Chirwa with the text in A11.
+
+WORKFLOW 6 - GUARDIAN: VIEW RESULTS
+Step 1. Sign in as mercy.chirwa@demoschool.example.com and set a new password.
+Step 2. My Children shows Thoko Chirwa, Form 1A.
+Step 3. Payments shows the three payments and the credit.
+Step 4. Progress and Report Cards: Thoko's Term 1 results are shown because her account is in credit.
+Step 5. Notifications: open the message and press Mark read.
+
+WORKFLOW 7 - ADMINISTRATOR: CONTINUE TO TERM 2 AND TERM 3
+Step 1. Sign in as the Administrator. Academics > Academic Years: Set as current on 2025/2026 Term 2.
+Step 2. Students > Continue to next term. Class: Form 1A. Continue to term: 2025/2026 Term 2. Press Continue students. The message says 1 of 1 students continued.
+Step 3. (Optional) Register Kondwani Phiri with class 2025/2026 Term 2, Form 1A, new guardian Yohane Phiri, Relationship Father (A5).
+Step 4. Teachers enter the Term 2 marks (A9) as in Workflow 4, choosing Term 2025/2026 TERM 2. The Head Teacher publishes.
+Step 5. Set as current on Term 3, then Continue to next term: Form 1A to 2025/2026 Term 3.
+Step 6. Teachers enter the Term 3 marks (A9) choosing 2025/2026 TERM 3. The Head Teacher publishes.
+
+WORKFLOW 8 - ADMINISTRATOR: SEND FOR PROGRESSION
+Step 1. Students > Continue to next term. Class: Form 1A. Continue to term: 2026/2027 Term 1 (from Term 3 via Head Teacher progression).
+Step 2. Press Continue students. The message says the students were sent to the Head Teacher for progression.
+
+WORKFLOW 9 - HEAD TEACHER: PROGRESSION DECISION
+Step 1. Sign in as the Head Teacher. Notifications shows "Progression review requested: Form 1A".
+Step 2. Progression Reviews: choose the period 2025/2026, Form 1, Term 3.
+Step 3. Thoko shows 69.44. (Kondwani shows 55.17 (2 of 3 terms, others absent).)
+Step 4. Press Calculate Review, choose Thoko, press Calculate / Refresh: Term 1 65.00, Term 2 69.67, Term 3 73.67, annual 69.44, recommendation PROMOTE.
+Step 5. Press Promote, paste the reason A13 and confirm. Thoko is placed in Form 2A for 2026/2027 Term 1.
+
+KEY RULES TO MENTION
+- Only teachers ticked for a subject can be chosen for it; one teacher per subject per class.
+- Submitted marks are read-only; published marks change only through an approved correction.
+- Payments are never edited or deleted; paying more than owed is kept as credit; dates use the Malawi date.
+- Guardians see results only when the balance is zero or in credit.
+- Progression happens only after Term 3 results are posted; earlier missing terms count as absent.
+- Form 4 students cannot be promoted (there is no Form 5).
+- Relationships: Mother, Father, Sister, Brother, Grandmother, Grandfather, Auntie, Uncle, Guardian, Other.
+
+
+========================================================================
+PART C - CLEAN SLATE SQL (run before the presentation)
+========================================================================
+Supabase Dashboard > SQL Editor > New query. Paste the whole file
+supabase/manual/reset_all_test_data_except_admin_school_com.sql
+from the project folder and press Run. It keeps only admin@school.com, the roles and permissions, and the pass-mark rule. The final result row should show auth_users 1 and system_users 1, and 0 for everything else.
